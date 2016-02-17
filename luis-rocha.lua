@@ -14,7 +14,7 @@ local _M = driver.new()
 local BGColor = require("lua.color").rgb(1,1,1,1)
 local epsilon, max_iteration, gamma_factor = 0.0000000001, 50, 2.2
 
-local cell_width, cell_height = 10, 10
+local n_cells_x, n_cells_y = 10, 10
 
 -------------------------------------------------------------------------------------
 -------------------------------- GRID FUNCTIONS -------------------------------------
@@ -29,15 +29,36 @@ end
 
 local function computeGridDimension(scene)
     -- this should return a "optimal" width and height after
-    return cell_width, cell_height
+    return n_cells_width, n_cells_height
 end
 
-local function makeGrid(window_width, window_height, cell_width, cell_height)
+local function makeGrid(window_width, window_height, n_cells_x, n_cells_y)
     -- returns an empty grid (a bidimensional table), where each cell 
     -- contains (1) its bounding box and (2) a table with the intersecting segments
     -- and the (3) initial winding number
 
     -- RETURN: A TABLE WITH FORMAT CELL[i][j] = {xmin, ymin, xmax, ymax, initialWindingNumber, segments = {} }
+
+    local cell_w, cell_h = window_width/n_cells_x, window_height/n_cells_y
+    local grid = {}
+
+    for i = 1, n_cells_x do        
+        grid[i] = {}
+        
+        for j = 1, n_cells_y do
+            local cell = grid[i][j]
+
+            -- CONVENTION: assumes box is closed in the left/bottom side, 
+            -- open in the top/right side
+            cell.xmin, cell.ymin = i*cell_w, j*cell_h
+            cell.xmax, cell.ymax = (i+1)*cell_w, (j+1)*cell_h
+
+            cell.initialWindingNumber = 0
+            cell.segments = {}
+        end
+    end
+
+    return grid
 end
 
 local function intersectSegmentCell(x0, y0, x1, y1, segment)
@@ -65,14 +86,20 @@ local function walkInPath(path, grid)
     -- RETURN: VOID
 end
 
-local function prepareGrid(scene)
+local function prepareGrid(rvg)
     -- 1) Compute grid dimensions
     -- 2) Create grid
     -- 3) loop through paths inside scene
     -- 4) Sort event_list -> insertion_sort (or any other stable sort)
     -- 5) fix initial winding numbers
-
     -- RETURN: FILLED GRID
+
+    local window_w = rvg.viewport.xmax - rvg.viewport.xmin
+    local window_h = rvg.viewport.ymax - rvg.viewport.ymin
+    local grid = makeGrid(window_w, window_h, n_cells_x, n_cells_y)
+    
+    
+
 end
 
 local function getCell(x, y, grid)

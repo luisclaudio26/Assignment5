@@ -54,6 +54,13 @@ local function walkInPath(path, grid)
     -- For each segment inside the path, walk through it in a Brenseham/Tripod-fashion
     -- push segment into intersecting cell
     -- write events to event_list
+    -- (1) pf final control point inside? 
+    -- (2) Is the segment going up or down
+    -- (3) Test respective cells. If up: test cell[i][j+1], cell[i][j-1], cell[i+1][j]; 
+    --      otherwise, cell[i-1][j], cell[i][j+1], cell[i][j-1]
+    --          -> if cell[i+1][j], event_list.push(i+1, j, increment)
+    --          -> if cell[i-1][j], event_list.push(i-1, j, increment)
+    -- (4)  
 
     -- RETURN: VOID
 end

@@ -22,7 +22,7 @@ local n_cells_x, n_cells_y = 10, 10
 -- Contains (1) the cell coordinates and (2) the initial winding number increment
 local event_list = {}
 
-local function fixLineWindingNumber(line, start, end)
+local function fixLineWindingNumber(line, start_i, end_i)
     -- Loop through line changing winding number 'till the net winding number is zero
     -- RETURN VOID
 end
@@ -42,11 +42,15 @@ local function makeGrid(window_width, window_height, n_cells_x, n_cells_y)
     local cell_w, cell_h = window_width/n_cells_x, window_height/n_cells_y
     local grid = {}
 
+    grid.width, grid.height = n_cells_x, n_cells_y
+    grid.cell_w, grid.cell_h = cell_w, cell_h 
+    grid.cells = {}
+
     for i = 1, n_cells_x do        
-        grid[i] = {}
+        grid.cells[i] = {}
         
         for j = 1, n_cells_y do
-            local cell = grid[i][j]
+            local cell = grid.cells[i][j]
 
             -- CONVENTION: assumes box is closed in the left/bottom side, 
             -- open in the top/right side
@@ -54,7 +58,9 @@ local function makeGrid(window_width, window_height, n_cells_x, n_cells_y)
             cell.xmax, cell.ymax = (i+1)*cell_w, (j+1)*cell_h
 
             cell.initialWindingNumber = 0
-            cell.segments = {}
+
+            -- !!! Shapes must contain triplets in the form {segment = , fill_type = , paint_info = } !!!
+            cell.shapes = {}
         end
     end
 
@@ -71,7 +77,7 @@ local function intersectSegmentCell(x0, y0, x1, y1, segment)
     -- RETURN : BOOLEAN
 end
 
-local function walkInPath(path, grid)
+local function walkInPath(shape, grid)
     -- For each segment inside the path, walk through it in a Brenseham/Tripod-fashion
     -- push segment into intersecting cell
     -- write events to event_list
@@ -84,6 +90,11 @@ local function walkInPath(path, grid)
     -- (4)  
 
     -- RETURN: VOID
+
+    local prim = shape.primitives
+    local i, j = prim[1].
+
+
 end
 
 local function prepareGrid(rvg)
@@ -94,17 +105,25 @@ local function prepareGrid(rvg)
     -- 5) fix initial winding numbers
     -- RETURN: FILLED GRID
 
+    -- !!! THIS ASSUMES PREPROCESSED RVG !!!
     local window_w = rvg.viewport.xmax - rvg.viewport.xmin
     local window_h = rvg.viewport.ymax - rvg.viewport.ymin
     local grid = makeGrid(window_w, window_h, n_cells_x, n_cells_y)
     
-    
+    local scene = rvg.scene
+    for i, shape in ipairs(scene) do
+        walkInPath(shape, grid)
+    end
 
+    -- TODO:
+    -- 4) Sort event_list -> insertion_sort (or any other stable sort)
+    -- 5) fix initial winding numbers
 end
 
 local function getCell(x, y, grid)
     -- Compute coordinates of cell containing (x,y)
     -- RETURN: i, j -> INTEGERS!!!
+    return ceil(x/grid.cell_w), ceil(y/grid.cell_h)
 end
 
 local function export_cell(i,j,cell)
@@ -357,7 +376,7 @@ function prepare_table.push_functions.degenerate_segment(x0, y0, dx0, dy0, dx1, 
     holder[n] = {}
 
     holder[n].type = "degenerate_segment"
-    holder[n].x, holder[n].y = x0, y0
+    holder[n].x0, holder[n].y0 = x0, y0
     holder[n].dx0, holder[n].dy0 = dx0, dy0
     holder[n].dx1, holder[n].dy1 = dx1, dy1
 end
@@ -939,6 +958,7 @@ end
 local function preparescene(scene)
 
     for i, element in ipairs(scene.elements) do
+        print(i)
         element.shape.xf = scene.xf * element.shape.xf
         prepare_table[element.shape.type](element)
         prepare_table.prepare_paint[element.paint.type](element.paint, scene.xf)

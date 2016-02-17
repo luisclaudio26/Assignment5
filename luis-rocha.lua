@@ -92,7 +92,16 @@ local function walkInPath(shape, grid)
     -- RETURN: VOID
 
     local prim = shape.primitives
-    local i, j = prim[1].
+    local i, j = getCell(prim[1].x0, prim[1].y0)
+
+    -- > Verifique se o segment sai pela direita, por cima, por baixo, pela esquerda ou se
+    -- está totalmente dentro usando usando intersectSegmentCell
+    -- > Insira o segment na lista de segmentos da célula
+    -- > Dependendo do resultado, tome a próxima célula ([i+1, j], [i, j+1], dependendo do caso) e repita
+    -- o processo ATÉ chegar na célula de partida
+    -- >> Cuidado com o caso em que a célula sai/entra pela esquerda: neste caso temos que adicionar a reta
+    -- extra.
+    -- >> Também, a cada célula que sai/entra por baixo, devemos anotar na event_list
 
 
 end

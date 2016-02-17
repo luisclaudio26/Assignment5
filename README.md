@@ -5,3 +5,5 @@ This is the fifth assignment from 2D Computer Graphics course at IMPA, 2016
   -> Shall test it against a regular/fixed size grid
 2) Intersection test:
   -> Bounding box test -> intermediate value theorem -> ray casting
+3) Circles: treat 'em normally
+4) Store the net winding number for each line

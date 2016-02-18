@@ -14,7 +14,7 @@ local _M = driver.new()
 local BGColor = require("lua.color").rgb(1,1,1,1)
 local epsilon, max_iteration, gamma_factor = 0.0000000001, 50, 2.2
 
-local cell_width, cell_height = 10, 10
+local n_cells_x, n_cells_y = 10, 10
 
 -------------------------------------------------------------------------------------
 -------------------------------- GRID FUNCTIONS -------------------------------------
@@ -22,22 +22,50 @@ local cell_width, cell_height = 10, 10
 -- Contains (1) the cell coordinates and (2) the initial winding number increment
 local event_list = {}
 
-local function fixLineWindingNumber(line, start, end)
+local function fixLineWindingNumber(line, start_i, end_i)
     -- Loop through line changing winding number 'till the net winding number is zero
     -- RETURN VOID
 end
 
 local function computeGridDimension(scene)
     -- this should return a "optimal" width and height after
-    return cell_width, cell_height
+    return n_cells_width, n_cells_height
 end
 
-local function makeGrid(window_width, window_height, cell_width, cell_height)
+local function makeGrid(window_width, window_height, n_cells_x, n_cells_y)
     -- returns an empty grid (a bidimensional table), where each cell 
     -- contains (1) its bounding box and (2) a table with the intersecting segments
     -- and the (3) initial winding number
 
     -- RETURN: A TABLE WITH FORMAT CELL[i][j] = {xmin, ymin, xmax, ymax, initialWindingNumber, segments = {} }
+
+    local cell_w, cell_h = window_width/n_cells_x, window_height/n_cells_y
+    local grid = {}
+
+    grid.width, grid.height = n_cells_x, n_cells_y
+    grid.cell_w, grid.cell_h = cell_w, cell_h 
+    grid.cells = {}
+
+    for i = 1, n_cells_x do        
+        grid.cells[i] = {}
+        
+        for j = 1, n_cells_y do
+            local cell = grid.cells[i][j]
+
+            -- CONVENTION: assumes box is closed in the left/bottom side, 
+            -- open in the top/right side
+            cell.xmin, cell.ymin = i*cell_w, j*cell_h
+            cell.xmax, cell.ymax = (i+1)*cell_w, (j+1)*cell_h
+
+            cell.initialWindingNumber = 0
+
+            -- !!! Shapes must contain triplets in the form {segment = , fill_type = , paint = } !!!
+            -- Or even maybe fill_type(segment, paint), just like a normal Element
+            cell.shapes = {}
+        end
+    end
+
+    return grid
 end
 
 local function intersectSegmentCell(x0, y0, x1, y1, segment)
@@ -50,7 +78,7 @@ local function intersectSegmentCell(x0, y0, x1, y1, segment)
     -- RETURN : BOOLEAN
 end
 
-local function walkInPath(path, grid)
+local function walkInPath(shape, grid)
     -- For each segment inside the path, walk through it in a Brenseham/Tripod-fashion
     -- push segment into intersecting cell
     -- write events to event_list
@@ -63,28 +91,73 @@ local function walkInPath(path, grid)
     -- (4)  
 
     -- RETURN: VOID
+
+    local prim = shape.primitives
+    local i, j = getCell(prim[1].x0, prim[1].y0)
+
+    -- > Verifique se o segment sai pela direita, por cima, por baixo, pela esquerda ou se
+    -- está totalmente dentro usando usando intersectSegmentCell
+    -- > Insira o segment na lista de segmentos da célula
+    -- > Dependendo do resultado, tome a próxima célula ([i+1, j], [i, j+1], dependendo do caso) e repita
+    -- o processo ATÉ chegar na célula de partida
+    -- >> Cuidado com o caso em que a célula sai/entra pela esquerda: neste caso temos que adicionar a reta
+    -- extra.
+    -- >> Também, a cada célula que sai/entra por baixo, devemos anotar na event_list
+
+
 end
 
-local function prepareGrid(scene)
+local function prepareGrid(rvg)
     -- 1) Compute grid dimensions
     -- 2) Create grid
     -- 3) loop through paths inside scene
     -- 4) Sort event_list -> insertion_sort (or any other stable sort)
     -- 5) fix initial winding numbers
-
     -- RETURN: FILLED GRID
+
+    -- !!! THIS ASSUMES PREPROCESSED RVG !!!
+    local window_w = rvg.viewport.xmax - rvg.viewport.xmin
+    local window_h = rvg.viewport.ymax - rvg.viewport.ymin
+    local grid = makeGrid(window_w, window_h, n_cells_x, n_cells_y)
+    
+    local scene = rvg.scene
+    for i, shape in ipairs(scene) do
+        walkInPath(shape, grid)
+    end
+
+    -- TODO:
+    -- 4) Sort event_list -> insertion_sort (or any other stable sort)
+    -- 5) fix initial winding numbers
 end
 
 local function getCell(x, y, grid)
     -- Compute coordinates of cell containing (x,y)
     -- RETURN: i, j -> INTEGERS!!!
+    return ceil(x/grid.cell_w), ceil(y/grid.cell_h)
 end
 
-local function export_cell(i,j,cell)
-    -- 4) compose scene
-    -- 5) Export svg
+local function export_cell(cell)
+    local paint, color = require("lua.paint"), require("lua.color")
 
-    -- RETURN: VOID, but exports a .svg file
+    -- CREATE A TEST CELL --
+    test_cell = {}
+    test_cell.xmin, test_cell.xmax = 0, 100
+    test_cell.ymin, test_cell.ymax = 0, 100
+    test_cell.initialWindingNumber = 0
+    
+    test_cell.shapes = {{}, {}}
+
+    test_cell.shapes[1].paint = paint.solid( color.rgb8(0,128,0) )
+    test_cell.shapes[1].fill_type = "fill"
+    test_cell.shapes[1].segment = {["type"] = "quadratic_segment", x0 = 0, y0 = 0, x1 = 50, y1 = 70, x2 = 100, y2 = 0}
+
+    test_cell.shapes[2].paint = paint.solid( color.rgb8(0,0,255) )
+    test_cell.shapes[2].fill_type = "fill"
+    test_cell.shapes[2].segment = {["type"] = "linear_segment", x0 = 0, y0 = 0, x1 = 100, y1 = 0}
+
+    -- This is how we call it. File will be output to a file called cell.svg
+    require("export_cell").export_cell(test_cell)
+
 end
 
 -----------------------------------------------------------------------------------------
@@ -330,7 +403,7 @@ function prepare_table.push_functions.degenerate_segment(x0, y0, dx0, dy0, dx1, 
     holder[n] = {}
 
     holder[n].type = "degenerate_segment"
-    holder[n].x, holder[n].y = x0, y0
+    holder[n].x0, holder[n].y0 = x0, y0
     holder[n].dx0, holder[n].dy0 = dx0, dy0
     holder[n].dx1, holder[n].dy1 = dx1, dy1
 end
@@ -911,6 +984,9 @@ end
 -- prepare scene for sampling and return modified scene
 local function preparescene(scene)
 
+
+    export_cell(0)
+
     for i, element in ipairs(scene.elements) do
         element.shape.xf = scene.xf * element.shape.xf
         prepare_table[element.shape.type](element)
@@ -1312,12 +1388,6 @@ local function stderr(...)
 end
 
 function _M.render(scene, viewport, file)
-
-    ---------------- Erase this after ----------------
-    export_cell(1,1)
-
-    ---------------- Erase this after ----------------
-
 local time = chronos.chronos()
     -- make sure scene does not contain any unsuported content
     checkscene(scene)

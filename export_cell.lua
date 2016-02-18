@@ -32,10 +32,34 @@ function primitive2path.quadratic_segment(prim)
     return built
 end
 
+function primitive2path.cubic_segment(prim)
+   local built = path.path()
+
+    built : begin_open_contour(0, prim.x0, prim.y0)
+    built : cubic_segment(prim.x0, prim.y0, prim.x1, prim.y1, prim.x2, prim.y2, prim.x3, prim.y3)
+    built : end_open_contour(prim.x3, prim.y3, 0)
+
+    built = built : stroke(3)
+
+    return built 
+end
+
+
+function primitive2path.rational_quadratic_segment(prim)
+    local built = path.path()
+
+    built : begin_open_contour(0, prim.x0, prim.y0)
+    built : rational_quadratic_segment(prim.x0, prim.y0, prim.x1, prim.y1, prim.w, prim.x2, prim.y2)
+    built : end_open_contour(prim.x2, prim.y2, 0)
+
+    built = built : stroke(3)
+
+    return built
+end
+
 ------------------------------
 ------------------------------
 function _M.export_cell(cell)
-
 	local element, scene = require("element"), require("scene")
 
 	local elements = {}
@@ -48,7 +72,7 @@ function _M.export_cell(cell)
 
         if v.fill_type == "fill" then
 	        elements[i] = element.fill(p, v.paint)
-        else if v.fill_type == "eofill" then
+        elseif v.fill_type == "eofill" then
             elements[i] = element.eofill(p, v.paint)
     	end
     end

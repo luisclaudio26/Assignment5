@@ -145,7 +145,7 @@ local function export_cell(cell)
     test_cell.ymin, test_cell.ymax = 0, 100
     test_cell.initialWindingNumber = 0
     
-    test_cell.shapes = {{}, {}}
+    test_cell.shapes = {{}, {}, {}, {}}
 
     test_cell.shapes[1].paint = paint.solid( color.rgb8(0,128,0) )
     test_cell.shapes[1].fill_type = "fill"
@@ -155,9 +155,16 @@ local function export_cell(cell)
     test_cell.shapes[2].fill_type = "fill"
     test_cell.shapes[2].segment = {["type"] = "linear_segment", x0 = 0, y0 = 0, x1 = 100, y1 = 0}
 
+    test_cell.shapes[3].paint = paint.solid( color.rgb8(128,0,0) )
+    test_cell.shapes[3].fill_type = "fill"
+    test_cell.shapes[3].segment = {["type"] = "cubic_segment", x0 = 0, y0 = 0, x1 = 25, y1 = 80, x2 = 75, y2 = 80, x3 = 100, y3 = 0}    
+
+    test_cell.shapes[4].paint = paint.solid( color.rgb8(0,100,100) )
+    test_cell.shapes[4].fill_type = "fill"
+    test_cell.shapes[4].segment = {["type"] = "rational_quadratic_segment", x0 = 0, y0 = 0, x1 = 50, y1 = 70, w = 2.0, x2 = 100, y2 = 0}
+
     -- This is how we call it. File will be output to a file called cell.svg
     require("export_cell").export_cell(test_cell)
-
 end
 
 -----------------------------------------------------------------------------------------

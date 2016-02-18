@@ -43,7 +43,7 @@ local function makeGrid(window_width, window_height, n_cells_x, n_cells_y)
     local grid = {}
 
     grid.width, grid.height = n_cells_x, n_cells_y
-    grid.cell_w, grid.cell_h = cell_w, cell_h 
+    grid.cell_w, grid.cell_h = cell_w, cell_h
     grid.cells = {}
 
     for i = 1, n_cells_x do        
@@ -76,9 +76,14 @@ local function intersectSegmentCell(x0, y0, x1, y1, segment)
     --      -> If it does not intersect, check for intersection with top side (by rotating the cell)
 
     -- RETURN : BOOLEAN
+
+
+
+
+
 end
 
-local function walkInPath(shape, grid)
+local function walkInPath(element, grid)
     -- For each segment inside the path, walk through it in a Brenseham/Tripod-fashion
     -- push segment into intersecting cell
     -- write events to event_list
@@ -92,8 +97,44 @@ local function walkInPath(shape, grid)
 
     -- RETURN: VOID
 
-    local prim = shape.primitives
-    local i, j = getCell(prim[1].x0, prim[1].y0)
+    local shape, prim = element.shape, element.shape.primitives
+    
+    local seg_i = 1
+    local i, j = getCell(prim[seg_i].x0, prim[seg_i].y0)
+    local start_i, start_j = i, j
+
+    repeat
+        -- Get current cell
+        local cell = grid[i][j]
+
+        -- Check whether segment is entering/leaving cell,
+        -- and in what direction
+        enterleave, direction = intersectSegmentCell(cell.xmin, cell.ymin, cell.xmax, cell.ymax, prim[seg_i])
+
+        -- Push segment to cell's list
+        table.insert( cell.shapes, {segment = prim[seg_i], fill_type = element.type, paint = element.paint} )
+
+        if enterleave == "none" then
+            -- Segment lies inside cell. Do nothing and take next segment.
+            seg_i++
+        elseif enterleave == "entering" then
+
+            if direction == "right" then
+                j = j + 1
+                -- push straight line
+            elseif direction == "bottom" then
+                i = i - 1
+                -- Change winding number, register event
+            elseif direction == "left" then
+                j = j - 1
+            elseif direction == "top" then
+                i = i + 1
+            end
+
+        elseif enterleave == "leaving" then
+        end 
+
+    while -- Condição?
 
     -- > Verifique se o segment sai pela direita, por cima, por baixo, pela esquerda ou se
     -- está totalmente dentro usando usando intersectSegmentCell
@@ -121,8 +162,8 @@ local function prepareGrid(rvg)
     local grid = makeGrid(window_w, window_h, n_cells_x, n_cells_y)
     
     local scene = rvg.scene
-    for i, shape in ipairs(scene) do
-        walkInPath(shape, grid)
+    for i, element in ipairs(scene) do
+        walkInPath(element, grid)
     end
 
     -- TODO:
@@ -991,8 +1032,9 @@ end
 -- prepare scene for sampling and return modified scene
 local function preparescene(scene)
 
-
+    -- Erase this after
     export_cell(0)
+    -- Erase this after
 
     for i, element in ipairs(scene.elements) do
         element.shape.xf = scene.xf * element.shape.xf

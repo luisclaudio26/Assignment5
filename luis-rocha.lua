@@ -59,7 +59,8 @@ local function makeGrid(window_width, window_height, n_cells_x, n_cells_y)
 
             cell.initialWindingNumber = 0
 
-            -- !!! Shapes must contain triplets in the form {segment = , fill_type = , paint_info = } !!!
+            -- !!! Shapes must contain triplets in the form {segment = , fill_type = , paint = } !!!
+            -- Or even maybe fill_type(segment, paint), just like a normal Element
             cell.shapes = {}
         end
     end
@@ -135,11 +136,26 @@ local function getCell(x, y, grid)
     return ceil(x/grid.cell_w), ceil(y/grid.cell_h)
 end
 
-local function export_cell(i,j,cell)
+local function export_cell(cell)
     -- 4) compose scene
     -- 5) Export svg
-
     -- RETURN: VOID, but exports a .svg file
+
+
+    local paint, color = require("lua.paint"), require("lua.color")
+
+    test_cell = {}
+    test_cell.xmin, test_cell.xmax = 0, 100
+    test_cell.ymin, test_cell.ymax = 0, 100
+    test_cell.initialWindingNumber = 0
+    
+    test_cell.shapes = {{}}
+    test_cell.shapes[1].paint = paint.solid( color.rgb8(0,128,0) )
+    test_cell.shapes[1].fill_type = "fill"
+    test_cell.shapes[1].segment = {["type"] = "linear_segment", x0 = 25, y0 = 25, x1 = 75, y1 = 75}
+
+    require("export_cell").export_cell(test_cell)
+
 end
 
 -----------------------------------------------------------------------------------------
@@ -966,8 +982,10 @@ end
 -- prepare scene for sampling and return modified scene
 local function preparescene(scene)
 
+
+    export_cell(0)
+
     for i, element in ipairs(scene.elements) do
-        print(i)
         element.shape.xf = scene.xf * element.shape.xf
         prepare_table[element.shape.type](element)
         prepare_table.prepare_paint[element.paint.type](element.paint, scene.xf)
@@ -1368,12 +1386,6 @@ local function stderr(...)
 end
 
 function _M.render(scene, viewport, file)
-
-    ---------------- Erase this after ----------------
-    export_cell(1,1)
-
-    ---------------- Erase this after ----------------
-
 local time = chronos.chronos()
     -- make sure scene does not contain any unsuported content
     checkscene(scene)

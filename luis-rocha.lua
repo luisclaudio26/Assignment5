@@ -137,23 +137,25 @@ local function getCell(x, y, grid)
 end
 
 local function export_cell(cell)
-    -- 4) compose scene
-    -- 5) Export svg
-    -- RETURN: VOID, but exports a .svg file
-
-
     local paint, color = require("lua.paint"), require("lua.color")
 
+    -- CREATE A TEST CELL --
     test_cell = {}
     test_cell.xmin, test_cell.xmax = 0, 100
     test_cell.ymin, test_cell.ymax = 0, 100
     test_cell.initialWindingNumber = 0
     
-    test_cell.shapes = {{}}
+    test_cell.shapes = {{}, {}}
+
     test_cell.shapes[1].paint = paint.solid( color.rgb8(0,128,0) )
     test_cell.shapes[1].fill_type = "fill"
-    test_cell.shapes[1].segment = {["type"] = "linear_segment", x0 = 25, y0 = 25, x1 = 75, y1 = 75}
+    test_cell.shapes[1].segment = {["type"] = "quadratic_segment", x0 = 0, y0 = 0, x1 = 50, y1 = 70, x2 = 100, y2 = 0}
 
+    test_cell.shapes[2].paint = paint.solid( color.rgb8(0,0,255) )
+    test_cell.shapes[2].fill_type = "fill"
+    test_cell.shapes[2].segment = {["type"] = "linear_segment", x0 = 0, y0 = 0, x1 = 100, y1 = 0}
+
+    -- This is how we call it. File will be output to a file called cell.svg
     require("export_cell").export_cell(test_cell)
 
 end

@@ -284,9 +284,30 @@ local function intersectSegmentCell(x0, y0, x1, y1, segment)
     -- RETURN : BOOLEAN
     -- x(t) = xmin, x(t) = xmax, y(t) = ymin, y(t) = ymax 
 
-    -- Right boundary
-    local f = function(t) return (segment.atx(t) - xmax) end
+    local direction
 
+    -- Check boundaries
+    local f = root_bisection(0, 1, function(t) return (segment.atx(t) - xmax) end )
+    if f ~= false then direction = "right" goto orientation end
+
+    f = root_bisection(0, 1, function(t) return (segment.atx(t) - xmin) end )
+    if f ~= false then direction = "left" goto orientation end
+
+    f = root_bisection(0, 1, function(t) return (segment.aty(t) - ymin) end )
+    if f ~= false then direction = "bottom" goto orientation end
+
+    f = root_bisection(0, 1, function(t) return (segment.aty(t) - ymax) end )
+    if f ~= false then direction = "top" goto orientation end
+
+    -- If we reach this part, segment is trapped inside box
+    return "none"
+
+    ::orientation::
+    if segment.x0 >= x0 and segment.x0 < x1 and segment.y0 >= y0 and segment.y0 < y1 then
+        return "leaving", direction
+    else
+        return "entering", direction
+    end
 end
 
 local function walkInPath(element, grid)

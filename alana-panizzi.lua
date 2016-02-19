@@ -48,16 +48,51 @@
 
 	-------------------------------------------------------------------------------------
 	-------------------------------- GRID FUNCTIONS -------------------------------------
-	-------------------------------------------------------------------------------------
+	-------------------------------------------------------------------------------------l]
+
 	-- Contains (1) the cell coordinates and (2) the initial winding number increment
 	local event_list = {}
 	local cell_size = 10
 
-	-- TODO
-	--[[local function fixLineWindingNumber(line, start, end)
-	    -- Loop through line changing winding number 'tilatl the net winding number is zero
+	--DONE AND WORKING
+	local function fixLineWindingNumber(cells, event_list)
+		local str = ""
+		local w = event_list[#event_list][1]
+		local x, y =  event_list[#event_list][2], event_list[#event_list][3]
+		for i = #event_list -1, 1, -1 do
+			next_y = event_list[i][3]
+			if next_y == y then 
+				next_x = event_list[i][2]
+			else
+				next_x = 1
+			end
+			if w ~= 0 then
+				for dx = next_x, x-1 do
+					cells[dx][y].initialWindingNumber = w
+					str = str.."["..dx.."]["..y.."].w = "..w..", "
+				end
+			else
+				--print("w=0")
+			end
+			if next_y ~= y then 
+				w = event_list[i][1]
+				--print(str)
+				str = ""
+			else 
+				w = w + event_list[i][1] 
+			end
+			x, y = event_list[i][3], next_y
+		end
+		if w ~= 0 then
+			for dx = 1, x do
+				cells[dx][y].initialWindingNumber = w
+				str = str.."["..dx.."]["..y.."].w = "..w..", "
+			end
+			--print(str)
+		end
+		-- Loop through line changing winding number 'tilatl the net winding number is zero
 	    -- RETURN VOID
-	end--]]
+	end
 
 	--DONE AND WORKING
 	local function computeGridDimension(scene)
@@ -105,7 +140,7 @@
 		return floor(x/cells.width) + 1, floor(y/cells.height) + 1
 	end
 
-	--DONE
+	--DONE AND WORKING
 	----------------------- uses my definition of segment and rayCastingFunction-----------------------
 	local function rayCasting(segment, xmin, xmax, ymin, ymax)
 		local rayCastingFunction = segment.foo
@@ -150,18 +185,18 @@
 		return p.segments[0]
 	end
 	-------------------------------------------------------------------------------------------------
-	--DONE
+	--DONE AND WORKING FOR TESTED EXAMPLES (MAYBE WE CAN TRY TO FIND ERRORS LATER)
 	local function intersectSegmentCell(i, j, cells, segment)
 	    -- 1) Check path bounding box against Cell
 	    --      -> if it is fully inside, then return true
 	    --      -> if it is not, check if one of the extreme control points are inside the cell.
 	    ----------------------- uses my definition of segment -----------------------
-	    local x, y, last = segment.x, segment.y, segment.last
+	    local x, y = segment.x, segment.y
 	    -----------------------------------------------------------------------------
 	    local i1, j1 = findCellCoord(x[1], y[1], cells)
-	    local ilast, jlast = findCellCoord(x[last], y[last], cells)
+	    local ifinal, jfinal = findCellCoord(x[#x], y[#y], cells)
 	    -- case final or first control point is inside cell
-	    if (i1 == i and j1 == j) or (ilast == i and jlast == j) then
+	    if (i1 == i and j1 == j) or (ifinal == i and jfinal == j) then
 	    	return true
 	    end
 
@@ -181,24 +216,17 @@
 		--RETURN : BOOLEAN
 	end
 
+	--DONE AND WORKING
 	local function inside_cell(x, y, i, j, cells)
 		xi, yi = findCellCoord(x, y, cell)
 		return xi == i and yj == j
 	end
 
-	--DONE
-	--[[ local function firstControlPointRightToCell(x, xmax)
-		for i in pairs(x) do
-			if x[i] >= xmax then
-				return i
-			end
-		end
-	--end]]
-
 	----------- uses my definition of segment (what a segment must have) --------------
+	-- DONE AND WORKING
 	local function createClosingCellSegment(x, y)
 		return {["x"] = x, ["y"] = y, ["foo"] = winding_number_linear, 
-			["sign"] = -1, ["last"] = 2}
+			["sign"] = -1}
 	end
 	-----------------------------------------------------------------------------------
 
@@ -209,12 +237,11 @@
 	    -- write events to event_list
 	    for l, segment in ipairs(path.segments) do
 	    	----------------------- uses my definition of segment -----------------------
-	    	local x, y, last = segment.x, segment.y, segment.last
+	    	local x, y = segment.x, segment.y
 	    	-----------------------------------------------------------------------------
-	    	local finali, finalj = findCellCoord(x[last], y[last], cells)
+	    	local finali, finalj = findCellCoord(x[#x], y[#y], cells)
 	    	-- First visited cell
 	    	local i, j = findCellCoord(x[1], y[1], cells)
-	    	print("init", i, j, finali, finalj)
 	    	-- treat case we start outside viewport
 	    	message1 = "other"
 	    	--(2) Is the segment going up or down, lef or right
@@ -246,34 +273,38 @@
 	    				flag = true
 			    	--	print("caseup")
 		    			-- leave above, increment initial winding number
-		    			cells[i][j].initialWindingNumber = cells[i][j].initialWindingNumber + 1
 		    			table.insert(event_list, {1, i, j})
+	    				--print(i, j, "->", i, j+1)
 		    			i, j = i, j+1
 		    		end
 		    	elseif intersectSegmentCell(i, j-1, cells, segment) then -- leave under, decrement initial winding number  
 	    			flag = true
 		    	--	print("casedown")
-	    			cells[i][j].initialWindingNumber = cells[i][j].initialWindingNumber - 1
 	    			table.insert(event_list, {-1, i, j})
+	    			--print(i, j, "->", i, j-1)
 	    			i, j = i, j-1
     			end 
-	    		if segment_going_right then
-		    		if intersectSegmentCell(i+1, j, cells, segment) then
-			    	--	print("caseright")		
-	    				flag = true
-		    			-- leave through the right, store a new closing segment if segment's end is not over the cell
-		    			if  cells[i][j].ymax > y[last] then
-		    				local s = createClosingCellSegment(path, {x[last], cells[i][j].ymax}, {x[last], y[last]})
-		    				table.insert(cells[i][j].segments, s)
-		    			end
-	    				i, j = i+1, j
-		    		end
-		    	elseif intersectSegmentCell(i-1, j, cells, segment) then
-		    		--print("caseleft")
-	    			--leave through the left, do nothing
-	    			flag = true
-					i, j = i-1, j
-		    	end
+    			--if not flag then
+		    		if segment_going_right then
+			    		if intersectSegmentCell(i+1, j, cells, segment) then
+				    	--	print("caseright")		
+		    				flag = true
+			    			-- leave through the right, store a new closing segment if segment's end is not over the cell
+			    			if  cells[i][j].ymax > y[#y] then
+			    				local s = createClosingCellSegment(path, {x[#x], cells[i][j].ymax}, {x[#x], y[#y]})
+			    				table.insert(cells[i][j].segments, s)
+			    			end
+			    			--print(i, j, "->", i+1, j)
+		    				i, j = i+1, j
+			    		end
+			    	elseif intersectSegmentCell(i-1, j, cells, segment) then
+			    		--print("caseleft")
+		    			--leave through the left, do nothing
+		    			flag = true
+		    			--print(i, j, "->", i-1, j)
+						i, j = i-1, j
+			    	end
+		    	--end
 		    	if not flag then 
 		    		print("errrooooooooooo")
 		    		break
@@ -283,38 +314,32 @@
 	    end
 	        -- RETURN: VOID
 	end
-
+	
 	--DONE AND WORKING
 	--needs a key as well so we order this array by this particular table position
-	local function countingSort(array, key)
-		--  calculate the histogram of key frequencies:
-		if array[1] == nil then return array end
-		local count, last, last_key = {}, array[1][key], 1
-		for i in pairs(array) do
-			if not count[array[i][key]] then count[array[i][key]] = 0 end
-		    count[array[i][key]] = count[array[i][key]] + 1
-		    max_element = max(last, array[i][key])
-		    last_key = max(i, last_key)
+	local function CountingSort(array, key)
+		local count = {}
+	    for j = 1, #array do
+	    	i = array[j][key]
+	    	if not count[i] then count[i] = 0 end
+	        count[i] = count[i] + 1
+	    end
+	    local total = 1
+		for i  = 1, #array do
+			if not count[i] then count[i] = 0 end
+		    local oldCount = count[i]
+		    count[i] = total
+		    total = total + oldCount
 		end
-
-		-- calculate the starting index for each key:
-		local total = 0
-		for i = 1, max_element do
-			if(not count[i]) then count[i] = 0 end
-		    count[i], total = total + count[i], total + count[i] 
-		end
-		-- copy to output array, preserving order of inputs with equal keys:
 		local output = {}
-		print(last_key)
-		
-		for i in pairs(array) do
-		    output[count[array[i][key]]] = array[i]
-		    count[array[i][key]] = count[array[i][key]] - 1
+		for i, x in pairs(array) do
+		    output[count[x[key]]] = x
+		    count[x[key]] = count[x[key]] + 1
 		end
 		return output
 	end
 
-	--TO DO
+	--DONE AND WORKING
 	local function prepareGrid(scene)
 	    -- 1) Compute grid dimensions
 	    local cell_width, cell_height = computeGridDimension(scene)
@@ -332,18 +357,14 @@
 			end
 		end
 	    -- 4) Sort event_list -> insertion_sort (or any other stable sort)
-		local y_sorted_event_list = countingSort(event_list, 3)
-		local x_sorted_event_list = countingSort(y_sorted_event_list, 2) -- (sort by x line)
-		for i in pairs(event_list) do
-			print(i, event_list[i][1], event_list[i][2], event_list[i][3] )
-		end
-		for i in pairs(sorted_event_list) do
-			print(i, x_sorted_event_list[i][1], sorted_event_list[i][2], sorted_event_list[i][3] )
-		end
-	    -- 5) fix initial winding numbers
-		--for   do
-			------------------TO DO-------------------------	
+		local x_sorted_event_list = CountingSort(event_list, 2) -- (sort by x line)
+		local y_sorted_event_list = CountingSort(event_list, 3) -- (sort by x line)
+		--[[for i in pairs(y_sorted_event_list) do
+			print(i, y_sorted_event_list[i][1], y_sorted_event_list[i][2], y_sorted_event_list[i][3] )
+		end--]]
 
+		-- 5) fix initial winding numbers
+		fixLineWindingNumber(cells, y_sorted_event_list)	
 	    -- RETURN: FILLED GRID
 	end
 
@@ -529,8 +550,8 @@
 		local c =  -(a*x[1] + b*y[1])
 		p.segments[i + p.k] = {["x"] = x, ["y"] = y,
 			["xmin"] = xmin, ["xmax"] = xmax, ["ymax"] = ymax, ["ymin"] = ymin, 
-			["foo"] = foo, ["sign"] = sign, ["xlast"] = x[2], ["ylast"] = y[2],
-			["last"] = 2, ["a"] = a, ["b"] = b, ["c"] = c, ["sign"] = sign }
+			["foo"] = foo, ["sign"] = sign,
+			["a"] = a, ["b"] = b, ["c"] = c, ["sign"] = sign }
 		p.xmax, p.ymax, p.xmin, p.ymin = 
 		path_bounding_values(p, xmax, ymax, xmin, ymin)
 	end 
@@ -540,13 +561,9 @@
 		local sign = 0
 		p.xmax , p.ymax, p.xmin, p.ymin = 
 			path_bounding_values(p, umax, vmax, umin, vmin)
-		last = 3
-		if (v[4]) then 
-			last = 4
-		end
-		if (v[last] - v[1] >= 0) then
+		if (v[#v] - v[1] >= 0) then
 			sign =  1
-		elseif (v[last] - v[1] < 0 ) then
+		elseif (v[#v] - v[1] < 0 ) then
 			sign = -1
 		end
 
@@ -554,10 +571,9 @@
 			["xmax"] = umax, ["xmin"] = umin,
 			["ymax"] = vmax, ["ymin"] = vmin, 
 			["foo"] = foo, ["sign"] = sign, ["i"] = i+p.k,
-			["last"] =  last
 		}
 		p.segments[i+p.k].rootx = {}
-		p.segments[i+p.k].b = u[1] - u[last]
+		p.segments[i+p.k].b = u[1] - u[#u]
 		if r then
 			p.segments[i+p.k].w = r
 		end	
@@ -1103,7 +1119,7 @@
 				end
 			end
 		end
-		for i, e in pairs(p.segments) do 
+		--[[for i, e in pairs(p.segments) do 
 			print(i)
 			--print("Xmax, xmin, ymax, ymin", e.xmax, e.xmin, e.ymax, e.ymin)
 			print("x, y", e.x[1], e.y[1], e.x[2], e.y[2], e.x[3], e.y[3], e.x[4], e.y[4])
@@ -1591,7 +1607,6 @@
 	end
 
 -- Basics
-
 	local function preparescene(scene)
 		scene.inverse_shapes_list = {}
 		for i, element in ipairs(scene.elements) do
@@ -1617,15 +1632,7 @@
 			end
 			scene.inverse_shapes_list[scene.size - i + 1] = element		
 		end	
-		-------------------TESTS-----------------
-		local x, y, j
-		array = {{33}, {4}, {3}, {52}, {2}, {12} }
-		arr = countingSort(array, 1)
 		prepareGrid(scene)
-
-		for i in pairs(arr) do
-			print(i, arr[i])
-		end
 		return scene
 	end
 

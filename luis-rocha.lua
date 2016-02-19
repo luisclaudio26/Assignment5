@@ -3,6 +3,7 @@ local image = require"image"
 local chronos = require"chronos"
 
 local bezier, quadratic = require("lua.bezier"), require("lua.quadratic")
+local bernstein = require("lua.bernstein")
 local xform, noise = require("xform"), require("blue")
 local unpack, pack = table.unpack, table.pack
 local max, min = math.max, math.min 
@@ -15,198 +16,6 @@ local BGColor = require("lua.color").rgb(1,1,1,1)
 local epsilon, max_iteration, gamma_factor = 0.0000000001, 50, 2.2
 
 local n_cells_x, n_cells_y = 10, 10
-
--------------------------------------------------------------------------------------
--------------------------------- GRID FUNCTIONS -------------------------------------
--------------------------------------------------------------------------------------
--- Contains (1) the cell coordinates and (2) the initial winding number increment
-local event_list = {}
-
-local function fixLineWindingNumber(line, start_i, end_i)
-    -- Loop through line changing winding number 'till the net winding number is zero
-    -- RETURN VOID
-end
-
-local function computeGridDimension(scene)
-    -- this should return a "optimal" width and height after
-    return n_cells_width, n_cells_height
-end
-
-local function makeGrid(window_width, window_height, n_cells_x, n_cells_y)
-    -- returns an empty grid (a bidimensional table), where each cell 
-    -- contains (1) its bounding box and (2) a table with the intersecting segments
-    -- and the (3) initial winding number
-
-    -- RETURN: A TABLE WITH FORMAT CELL[i][j] = {xmin, ymin, xmax, ymax, initialWindingNumber, segments = {} }
-
-    local cell_w, cell_h = window_width/n_cells_x, window_height/n_cells_y
-    local grid = {}
-
-    grid.width, grid.height = n_cells_x, n_cells_y
-    grid.cell_w, grid.cell_h = cell_w, cell_h
-    grid.cells = {}
-
-    for i = 1, n_cells_x do        
-        grid.cells[i] = {}
-        
-        for j = 1, n_cells_y do
-            local cell = grid.cells[i][j]
-
-            -- CONVENTION: assumes box is closed in the left/bottom side, 
-            -- open in the top/right side
-            cell.xmin, cell.ymin = i*cell_w, j*cell_h
-            cell.xmax, cell.ymax = (i+1)*cell_w, (j+1)*cell_h
-
-            cell.initialWindingNumber = 0
-
-            -- !!! Shapes must contain triplets in the form {segment = , fill_type = , paint = } !!!
-            -- Or even maybe fill_type(segment, paint), just like a normal Element
-            cell.shapes = {}
-        end
-    end
-
-    return grid
-end
-
-local function intersectSegmentCell(x0, y0, x1, y1, segment)
-    -- 1) Check path bounding box against Cell
-    --      -> if it is fully inside, then return true
-    --      -> if it is not, check if one of the extreme control points are inside the cell.
-    -- 2) Ray cast -> check for intersection with right side
-    --      -> If it does not intersect, check for intersection with top side (by rotating the cell)
-
-    -- RETURN : BOOLEAN
-
-
-
-
-
-end
-
-local function walkInPath(element, grid)
-    -- For each segment inside the path, walk through it in a Brenseham/Tripod-fashion
-    -- push segment into intersecting cell
-    -- write events to event_list
-    -- (1) pf final control point inside? 
-    -- (2) Is the segment going up or down
-    -- (3) Test respective cells. If up: test cell[i][j+1], cell[i][j-1], cell[i+1][j]; 
-    --      otherwise, cell[i-1][j], cell[i][j+1], cell[i][j-1]
-    --          -> if cell[i+1][j], event_list.push(i+1, j, increment)
-    --          -> if cell[i-1][j], event_list.push(i-1, j, increment)
-    -- (4)  
-
-    -- RETURN: VOID
-
-    local shape, prim = element.shape, element.shape.primitives
-    
-    local seg_i = 1
-    local i, j = getCell(prim[seg_i].x0, prim[seg_i].y0)
-    local start_i, start_j = i, j
-
-    repeat
-        -- Get current cell
-        local cell = grid[i][j]
-
-        -- Check whether segment is entering/leaving cell,
-        -- and in what direction
-        enterleave, direction = intersectSegmentCell(cell.xmin, cell.ymin, cell.xmax, cell.ymax, prim[seg_i])
-
-        -- Push segment to cell's list
-        table.insert( cell.shapes, {segment = prim[seg_i], fill_type = element.type, paint = element.paint} )
-
-        if enterleave == "none" then
-            -- Segment lies inside cell. Do nothing and take next segment.
-            seg_i++
-        elseif enterleave == "entering" then
-
-            if direction == "right" then
-                j = j + 1
-                -- push straight line
-            elseif direction == "bottom" then
-                i = i - 1
-                -- Change winding number, register event
-            elseif direction == "left" then
-                j = j - 1
-            elseif direction == "top" then
-                i = i + 1
-            end
-
-        elseif enterleave == "leaving" then
-        end 
-
-    while -- Condição?
-
-    -- > Verifique se o segment sai pela direita, por cima, por baixo, pela esquerda ou se
-    -- está totalmente dentro usando usando intersectSegmentCell
-    -- > Insira o segment na lista de segmentos da célula
-    -- > Dependendo do resultado, tome a próxima célula ([i+1, j], [i, j+1], dependendo do caso) e repita
-    -- o processo ATÉ chegar na célula de partida
-    -- >> Cuidado com o caso em que a célula sai/entra pela esquerda: neste caso temos que adicionar a reta
-    -- extra.
-    -- >> Também, a cada célula que sai/entra por baixo, devemos anotar na event_list
-
-
-end
-
-local function prepareGrid(rvg)
-    -- 1) Compute grid dimensions
-    -- 2) Create grid
-    -- 3) loop through paths inside scene
-    -- 4) Sort event_list -> insertion_sort (or any other stable sort)
-    -- 5) fix initial winding numbers
-    -- RETURN: FILLED GRID
-
-    -- !!! THIS ASSUMES PREPROCESSED RVG !!!
-    local window_w = rvg.viewport.xmax - rvg.viewport.xmin
-    local window_h = rvg.viewport.ymax - rvg.viewport.ymin
-    local grid = makeGrid(window_w, window_h, n_cells_x, n_cells_y)
-    
-    local scene = rvg.scene
-    for i, element in ipairs(scene) do
-        walkInPath(element, grid)
-    end
-
-    -- TODO:
-    -- 4) Sort event_list -> insertion_sort (or any other stable sort)
-    -- 5) fix initial winding numbers
-end
-
-local function getCell(x, y, grid)
-    -- Compute coordinates of cell containing (x,y)
-    -- RETURN: i, j -> INTEGERS!!!
-    return ceil(x/grid.cell_w), ceil(y/grid.cell_h)
-end
-
-local function export_cell(cell)
-    local paint, color = require("lua.paint"), require("lua.color")
-
-    -- CREATE A TEST CELL --
-    test_cell = {}
-    test_cell.xmin, test_cell.xmax = 0, 100
-    test_cell.ymin, test_cell.ymax = 0, 100
-    test_cell.initialWindingNumber = 0
-    
-    test_cell.shapes = {{}, {}, {}, {}}
-
-    test_cell.shapes[1].paint = paint.solid( color.rgb8(0,128,0) )
-    test_cell.shapes[1].fill_type = "fill"
-    test_cell.shapes[1].segment = {["type"] = "quadratic_segment", x0 = 0, y0 = 0, x1 = 50, y1 = 70, x2 = 100, y2 = 0}
-
-    test_cell.shapes[2].paint = paint.solid( color.rgb8(0,0,255) )
-    test_cell.shapes[2].fill_type = "fill"
-    test_cell.shapes[2].segment = {["type"] = "linear_segment", x0 = 0, y0 = 0, x1 = 100, y1 = 0}
-
-    test_cell.shapes[3].paint = paint.solid( color.rgb8(128,0,0) )
-    test_cell.shapes[3].fill_type = "fill"
-    test_cell.shapes[3].segment = {["type"] = "cubic_segment", x0 = 0, y0 = 0, x1 = 25, y1 = 80, x2 = 75, y2 = 80, x3 = 100, y3 = 0}    
-
-    test_cell.shapes[4].paint = paint.solid( color.rgb8(0,100,100) )
-    test_cell.shapes[4].fill_type = "fill"
-    test_cell.shapes[4].segment = {["type"] = "rational_quadratic_segment", x0 = 0, y0 = 0, x1 = 50, y1 = 70, w = 2.0, x2 = 100, y2 = 0}
-
-    -- This is how we call it. File will be output to a file called cell.svg
-    require("export_cell").export_cell(test_cell)
-end
 
 -----------------------------------------------------------------------------------------
 -------------------------------- AUXILIAR FUNCTIONS -------------------------------------
@@ -229,21 +38,23 @@ local function truncate_parameter(t)
     return t
 end
 
-local function root_bisection(t0, t1, func)
+local function root_bisection(t0, t1, func, n_it)
+    local n_it = n_it or 0
     local tm = (t0 + t1)*0.5
 
     -- Halting criterium
     local delta = t1 - t0
     if delta < epsilon then return tm end
+    if n_it >= max_iteration then return false end
 
     -- Recursively subdivide
     local y = func(tm)
     local sy = sign(y)
 
     if sy == sign( func(t0) ) then
-        return root_bisection(tm, t1, func)
+        return root_bisection(tm, t1, func, n_it + 1)
     elseif sy == sign( func(t1) ) then 
-        return root_bisection(t0, tm, func)
+        return root_bisection(t0, tm, func, n_it + 1)
     elseif y == 0 then 
         return tm
     end
@@ -411,6 +222,196 @@ local function ungamma(color)
     return out
 end
 
+-------------------------------------------------------------------------------------
+-------------------------------- GRID FUNCTIONS -------------------------------------
+-------------------------------------------------------------------------------------
+-- Contains (1) the cell coordinates and (2) the initial winding number increment
+local event_list = {}
+
+local function fixLineWindingNumber(line, start_i, end_i)
+    -- Loop through line changing winding number 'till the net winding number is zero
+    -- RETURN VOID
+end
+
+local function computeGridDimension(scene)
+    -- this should return a "optimal" width and height after
+    return n_cells_width, n_cells_height
+end
+
+local function makeGrid(window_width, window_height, n_cells_x, n_cells_y)
+    -- returns an empty grid (a bidimensional table), where each cell 
+    -- contains (1) its bounding box and (2) a table with the intersecting segments
+    -- and the (3) initial winding number
+
+    -- RETURN: A TABLE WITH FORMAT CELL[i][j] = {xmin, ymin, xmax, ymax, initialWindingNumber, segments = {} }
+
+    local cell_w, cell_h = window_width/n_cells_x, window_height/n_cells_y
+    local grid = {}
+
+    grid.width, grid.height = n_cells_x, n_cells_y
+    grid.cell_w, grid.cell_h = cell_w, cell_h
+    grid.cells = {}
+
+    for i = 1, n_cells_x do        
+        grid.cells[i] = {}
+        
+        for j = 1, n_cells_y do
+            local cell = grid.cells[i][j]
+
+            -- CONVENTION: assumes box is closed in the left/bottom side, 
+            -- open in the top/right side
+            cell.xmin, cell.ymin = i*cell_w, j*cell_h
+            cell.xmax, cell.ymax = (i+1)*cell_w, (j+1)*cell_h
+
+            cell.initialWindingNumber = 0
+
+            -- !!! Shapes must contain triplets in the form {segment = , fill_type = , paint = } !!!
+            -- Or even maybe fill_type(segment, paint), just like a normal Element
+            cell.shapes = {}
+        end
+    end
+
+    return grid
+end
+
+local function intersectSegmentCell(x0, y0, x1, y1, segment)
+    -- 1) Check path bounding box against Cell
+    --      -> if it is fully inside, then return true
+    --      -> if it is not, check if one of the extreme control points are inside the cell.
+    -- 2) Ray cast -> check for intersection with right side
+    --      -> If it does not intersect, check for intersection with top side (by rotating the cell)
+
+    -- RETURN : BOOLEAN
+    -- x(t) = xmin, x(t) = xmax, y(t) = ymin, y(t) = ymax 
+
+    -- Right boundary
+    local f = function(t) return (segment.atx(t) - xmax) end
+
+end
+
+local function walkInPath(element, grid)
+    -- For each segment inside the path, walk through it in a Brenseham/Tripod-fashion
+    -- push segment into intersecting cell
+    -- write events to event_list
+    -- (1) pf final control point inside? 
+    -- (2) Is the segment going up or down
+    -- (3) Test respective cells. If up: test cell[i][j+1], cell[i][j-1], cell[i+1][j]; 
+    --      otherwise, cell[i-1][j], cell[i][j+1], cell[i][j-1]
+    --          -> if cell[i+1][j], event_list.push(i+1, j, increment)
+    --          -> if cell[i-1][j], event_list.push(i-1, j, increment)
+    -- (4)  
+
+    -- RETURN: VOID
+
+    local shape, prim = element.shape, element.shape.primitives
+    
+    local seg_i = 1
+    local i, j = getCell(prim[seg_i].x0, prim[seg_i].y0)
+    local start_i, start_j = i, j
+
+    repeat
+        -- Get current cell
+        local cell = grid[i][j]
+
+        -- Check whether segment is entering/leaving cell,
+        -- and in what direction
+        enterleave, direction = intersectSegmentCell(cell.xmin, cell.ymin, cell.xmax, cell.ymax, prim[seg_i])
+
+        -- Push segment to cell's list
+        table.insert( cell.shapes, {segment = prim[seg_i], fill_type = element.type, paint = element.paint} )
+
+        if enterleave == "none" then
+            -- Segment lies inside cell. Do nothing and take next segment.
+            seg_i++
+        elseif enterleave == "entering" then
+
+            if direction == "right" then
+                j = j + 1
+                -- push straight line
+            elseif direction == "bottom" then
+                i = i - 1
+                -- Change winding number, register event
+            elseif direction == "left" then
+                j = j - 1
+            elseif direction == "top" then
+                i = i + 1
+            end
+
+        elseif enterleave == "leaving" then
+        end 
+
+    while -- Condição?
+
+    -- > Verifique se o segment sai pela direita, por cima, por baixo, pela esquerda ou se
+    -- está totalmente dentro usando usando intersectSegmentCell
+    -- > Insira o segment na lista de segmentos da célula
+    -- > Dependendo do resultado, tome a próxima célula ([i+1, j], [i, j+1], dependendo do caso) e repita
+    -- o processo ATÉ chegar na célula de partida
+    -- >> Cuidado com o caso em que a célula sai/entra pela esquerda: neste caso temos que adicionar a reta
+    -- extra.
+    -- >> Também, a cada célula que sai/entra por baixo, devemos anotar na event_list
+end
+
+local function prepareGrid(rvg)
+    -- 1) Compute grid dimensions
+    -- 2) Create grid
+    -- 3) loop through paths inside scene
+    -- 4) Sort event_list -> insertion_sort (or any other stable sort)
+    -- 5) fix initial winding numbers
+    -- RETURN: FILLED GRID
+
+    -- !!! THIS ASSUMES PREPROCESSED RVG !!!
+    local window_w = rvg.viewport.xmax - rvg.viewport.xmin
+    local window_h = rvg.viewport.ymax - rvg.viewport.ymin
+    local grid = makeGrid(window_w, window_h, n_cells_x, n_cells_y)
+    
+    local scene = rvg.scene
+    for i, element in ipairs(scene) do
+        walkInPath(element, grid)
+    end
+
+    -- TODO:
+    -- 4) Sort event_list -> insertion_sort (or any other stable sort)
+    -- 5) fix initial winding numbers
+end
+
+local function getCell(x, y, grid)
+    -- Compute coordinates of cell containing (x,y)
+    -- RETURN: i, j -> INTEGERS!!!
+    return ceil(x/grid.cell_w), ceil(y/grid.cell_h)
+end
+
+local function export_cell(cell)
+    local paint, color = require("lua.paint"), require("lua.color")
+
+    -- CREATE A TEST CELL --
+    test_cell = {}
+    test_cell.xmin, test_cell.xmax = 0, 100
+    test_cell.ymin, test_cell.ymax = 0, 100
+    test_cell.initialWindingNumber = 0
+    
+    test_cell.shapes = {{}, {}, {}, {}}
+
+    test_cell.shapes[1].paint = paint.solid( color.rgb8(0,128,0) )
+    test_cell.shapes[1].fill_type = "fill"
+    test_cell.shapes[1].segment = {["type"] = "quadratic_segment", x0 = 0, y0 = 0, x1 = 50, y1 = 70, x2 = 100, y2 = 0}
+
+    test_cell.shapes[2].paint = paint.solid( color.rgb8(0,0,255) )
+    test_cell.shapes[2].fill_type = "fill"
+    test_cell.shapes[2].segment = {["type"] = "linear_segment", x0 = 0, y0 = 0, x1 = 100, y1 = 0}
+
+    test_cell.shapes[3].paint = paint.solid( color.rgb8(128,0,0) )
+    test_cell.shapes[3].fill_type = "fill"
+    test_cell.shapes[3].segment = {["type"] = "cubic_segment", x0 = 0, y0 = 0, x1 = 25, y1 = 80, x2 = 75, y2 = 80, x3 = 100, y3 = 0}    
+
+    test_cell.shapes[4].paint = paint.solid( color.rgb8(0,100,100) )
+    test_cell.shapes[4].fill_type = "fill"
+    test_cell.shapes[4].segment = {["type"] = "rational_quadratic_segment", x0 = 0, y0 = 0, x1 = 50, y1 = 70, w = 2.0, x2 = 100, y2 = 0}
+
+    -- This is how we call it. File will be output to a file called cell.svg
+    require("export_cell").export_cell(test_cell)
+end
+
 -----------------------------------------------------------------------------------------
 -------------------------------- PATH PREPROCESSING -------------------------------------
 -----------------------------------------------------------------------------------------
@@ -516,6 +517,15 @@ function prepare_table.push_functions.quadratic_segment(u0, v0, u1, v1, u2, v2, 
     holder[n].x2, holder[n].y2 = u2, v2
 
     holder[n].scene_to_canonic = trans
+
+    -- This will be useful sometimes
+    holder[n].atx = function(t)
+        return bernstein.lerp2(t, t, u0, u1, u2)
+    end
+
+    holder[n].aty = function(t)
+        return bernstein.lerp2(t, t, v0, v1, v2)
+    end
 end
 
 function prepare_table.push_functions.cubic_segment(u0, v0, u1, v1, u2, v2, u3, v3, holder)

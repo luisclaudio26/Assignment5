@@ -341,25 +341,22 @@ local function walkInPath(element, grid)
         -- Push segment to cell's list
         table.insert( cell.shapes, {segment = prim[seg_i], fill_type = element.type, paint = element.paint} )
 
-        if enterleave == "none" then
-            -- Segment lies inside cell. Do nothing and take next segment.
-            seg_i++
-        elseif enterleave == "entering" then
+        if direction == "right" then
+            j = j + 1
+            --push straight line
+            
 
-            if direction == "right" then
-                j = j + 1
-                -- push straight line
-            elseif direction == "bottom" then
-                i = i - 1
-                -- Change winding number, register event
-            elseif direction == "left" then
-                j = j - 1
-            elseif direction == "top" then
-                i = i + 1
-            end
-
-        elseif enterleave == "leaving" then
-        end 
+            
+        elseif direction == "bottom" then
+            i = i - 1
+            -- Change winding number, register event
+        elseif direction == "left" then
+            j = j - 1
+        elseif direction == "top" then
+            i = i + 1
+        else 
+            seg_i++ -- Segment is trapped inside cell
+        end
 
     while -- Condição?
 

@@ -284,6 +284,9 @@ local function intersectSegmentCell(x0, y0, x1, y1, segment)
     -- RETURN : BOOLEAN
     -- x(t) = xmin, x(t) = xmax, y(t) = ymin, y(t) = ymax 
 
+    -- TODO: E quando o segmento cruzar dois lados da bounding box?
+    -- A ordem dessas checagens deve estar correta!!!
+
     local direction
 
     -- Check boundaries
@@ -331,25 +334,46 @@ local function walkInPath(element, grid)
     local start_i, start_j = i, j
 
     repeat
-        -- Get current cell
+        -- Get current cell and segment
         local cell = grid[i][j]
+        local seg = prim[seg_i]
 
         -- Check whether segment is entering/leaving cell,
         -- and in what direction
-        enterleave, direction = intersectSegmentCell(cell.xmin, cell.ymin, cell.xmax, cell.ymax, prim[seg_i])
+        enterleave, direction = intersectSegmentCell(cell.xmin, cell.ymin, cell.xmax, cell.ymax, seg)
 
         -- Push segment to cell's list
-        table.insert( cell.shapes, {segment = prim[seg_i], fill_type = element.type, paint = element.paint} )
+        table.insert( cell.shapes, {segment = seg, fill_type = element.type, paint = element.paint} )
 
+        local last_x, last_y = seg.last_point() -- Assumes untransformed
         if direction == "right" then
             j = j + 1
-            --push straight line
-            
 
-            
+            --push straight line
+            if last_y < cell.ymax then
+
+                local line = {}
+                if enterleave == "leaving" then
+                    line.x0, line.y0, line.x1, line.y1 = last_x,last_y,last_x,cell.ymax
+                else
+                    line.x0, line.y0, line.x1, line.y1 = last_x,cell.ymax,last_x,last_y
+                end
+
+                local a, b, c = compute_implicit_line(line.x0, line.y0, line.x1, line.y1)
+                line.implicit = function(x, y)
+                    return a*x + b*y + c
+                end
+
+                table.insert(cell.shapes, {segment = line, fill_type = element.type, paint = element.paint})
+            end
         elseif direction == "bottom" then
             i = i - 1
-            -- Change winding number, register event
+
+            if enterleave == "entering" then
+                cell.initialWindingNumber = cell.initialWindingNumber + 1
+            else
+                cell.initialWindingNumber = cell.initialWindingNumber - 1
+            end
         elseif direction == "left" then
             j = j - 1
         elseif direction == "top" then
@@ -358,7 +382,9 @@ local function walkInPath(element, grid)
             seg_i++ -- Segment is trapped inside cell
         end
 
-    while -- Condição?
+    while not (i == start_i and j == start_j) and seg_i <= #prim
+
+    -- TODO: Se o segment está entrando e acaba ali dentro, temos de pegar o próximo
 
     -- > Verifique se o segment sai pela direita, por cima, por baixo, pela esquerda ou se
     -- está totalmente dentro usando usando intersectSegmentCell
@@ -437,9 +463,9 @@ local prepare_table = {}
 prepare_table.instructions = {}
 prepare_table.push_functions = {}
 
---------------------------------
------- Push primitives ---------
---------------------------------
+-------------------------------- TODO: (1) create atx(), aty() for all segments
+------ Push primitives ---------       (2) create a function last_point() that returns the last control point of segment
+--------------------------------            -> But points are transformed; what to do now?
 function prepare_table.push_functions.linear_segment(x0, y0, x1, y1, holder, virtual)
     
     -- Virtual flag: a Virtual linear segment must be considered when filling
@@ -536,7 +562,7 @@ function prepare_table.push_functions.quadratic_segment(u0, v0, u1, v1, u2, v2, 
 
     holder[n].scene_to_canonic = trans
 
-    -- This will be useful sometimes
+    -- This will be useful
     holder[n].atx = function(t)
         return bernstein.lerp2(t, t, u0, u1, u2)
     end
@@ -544,6 +570,8 @@ function prepare_table.push_functions.quadratic_segment(u0, v0, u1, v1, u2, v2, 
     holder[n].aty = function(t)
         return bernstein.lerp2(t, t, v0, v1, v2)
     end
+
+    holder[n].last_point = function() return u2, v2 end
 end
 
 function prepare_table.push_functions.cubic_segment(u0, v0, u1, v1, u2, v2, u3, v3, holder)

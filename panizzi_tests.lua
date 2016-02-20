@@ -267,6 +267,7 @@ local GRID
     		end
 		   	while true do
 		    	table.insert(cells[i][j].shapes, {["segment"] = segment, fill_type = path.type, paint = path.paint} )
+		    	print(segment.type, segment.x)
 		    	-- cell that contains the first control point
 	    	-- (1) pf final control point inside this cell or did we reach a border of the viewport?
 		    	if (i == finali and j == finalj) or cells[i][j].border then 
@@ -297,7 +298,7 @@ local GRID
 			    			-- leave through the right, store a new closing segment if segment's end is not over the cell
 			    			if  cells[i][j].ymax > y[#y] then
 			    				local s = createClosingCellSegment(path, {x[#x], cells[i][j].ymax}, {x[#x], y[#y]})
-			    				table.insert(cells[i][j].shapes, {segment = s, fill_type = path.type, paint = path.paint})
+			    				table.insert(cells[i][j].shapes, {["segment"] = s, fill_type = path.type, paint = path.paint})
 			    			end
 			    			--print(i, j, "->", i+1, j)
 		    				i, j = i+1, j
@@ -505,6 +506,7 @@ local GRID
 		local c, s, bool, expression
 		local x, y, sign = e.x, e.y, 0 
 		local a, b, c = e.a, e.b, e.c
+
 		if (a < 0 or (a == 0 and b > 0)) then
 			bool = y[2] < py and py <= y[1]
 		else
@@ -539,8 +541,11 @@ local GRID
 	end
 
 	function prepare_LS(i, j, scene, p, vx, vy, bool)
+
 		local x, y, foo, sign, xmax, xmin, ymax, ymin
-		if not vy then
+
+		-- [LC] could be replace for vy = vy or blabla
+		if vy == nil then
 			vx, vy = {p.data[j], p.data[j+2]}, {p.data[j+1], p.data[j+3]}
 		end
 		if not bool then
@@ -548,6 +553,7 @@ local GRID
 		else
 			x, y = vx, vy
 		end
+
 		xmax, xmin, ymax, ymin = bounding_values(x, y)
 		foo = winding_number_linear
 		if (y[2] - y[1] >= 0) then

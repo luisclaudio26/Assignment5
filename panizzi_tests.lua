@@ -229,8 +229,13 @@ local GRID
 	----------- uses my definition of segment (what a segment must have) --------------
 	-- DONE AND WORKING
 	local function createClosingCellSegment(x, y)
+
+		local a, b = y[2] - y[1], x[1] - x[2]
+		local c =  -(a*x[1] + b*y[1])
+
 		return {["x"] = x, ["y"] = y, ["foo"] = winding_number_linear, 
-			["sign"] = -1}
+			["sign"] = -1, ["a"] = a, ["b"] = b, ["c"] = c}
+
 	end
 	-----------------------------------------------------------------------------------
 
@@ -243,6 +248,7 @@ local GRID
 	    for l, segment in ipairs(path.shape.segments) do
 	    	----------------------- uses my definition of segment -----------------------
 	    	local x, y = segment.x, segment.y
+
 	    	-----------------------------------------------------------------------------
 	    	local finali, finalj = findCellCoord(x[#x], y[#y], cells)
 	    	-- First visited cell
@@ -265,9 +271,10 @@ local GRID
 	    	else
     			message = ("This segment is going down left")
     		end
+
 		   	while true do
-		    	table.insert(cells[i][j].shapes, {["segment"] = segment, fill_type = path.type, paint = path.paint} )
-		    	print(segment.type, segment.x)
+		    	table.insert(cells[i][j].shapes, {["segment"] = segment, ["path"] = path} )
+		    	print("Inserting in cell ", i, j, segment.type, segment.x[1], segment.y[1], segment.x[2], segment.y[2])
 		    	-- cell that contains the first control point
 	    	-- (1) pf final control point inside this cell or did we reach a border of the viewport?
 		    	if (i == finali and j == finalj) or cells[i][j].border then 
@@ -297,8 +304,13 @@ local GRID
 		    				flag = true
 			    			-- leave through the right, store a new closing segment if segment's end is not over the cell
 			    			if  cells[i][j].ymax > y[#y] then
-			    				local s = createClosingCellSegment(path, {x[#x], cells[i][j].ymax}, {x[#x], y[#y]})
-			    				table.insert(cells[i][j].shapes, {["segment"] = s, fill_type = path.type, paint = path.paint})
+
+			    				-- [LC] I think this is wrong! x1 = x2 = x[#x], 
+			    				-- and y1 = y[#y], y2 = cells[i][j].ymax
+			    				local newx, newy = {x[#x], x[#x]}, {y[#y], cells[i][j].ymax}
+
+			    				local s = createClosingCellSegment(newx, newy)
+			    				table.insert(cells[i][j].shapes, {["segment"] = s, ["path"] = path})
 			    			end
 			    			--print(i, j, "->", i+1, j)
 		    				i, j = i+1, j
@@ -506,6 +518,8 @@ local GRID
 		local c, s, bool, expression
 		local x, y, sign = e.x, e.y, 0 
 		local a, b, c = e.a, e.b, e.c
+
+		--print(x[1], y[1], x[2], y[2], a, b, c)
 
 		if (a < 0 or (a == 0 and b > 0)) then
 			bool = y[2] < py and py <= y[1]
@@ -1035,7 +1049,7 @@ local GRID
 			local winding_number = seg.foo(seg, x, y) + cell.initialWindingNumber
 
 			if winding_number ~= 0 then
-				c = e.paint.foo(e.paint.data, x, y, e.paint)
+				c = e.path.paint.foo(e.path.paint.data, x, y, e.paint)
 				colors[k] = c
 				k = k+1
 				if (c[4] == 1) then

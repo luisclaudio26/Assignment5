@@ -71,6 +71,12 @@ local GRID
 			if w ~= 0 then
 				for dx = next_x, x-1 do
 					cells[dx][y].initialWindingNumber = w
+
+					-- This is a "fake" segment, just to correctly
+					-- paint the cell
+					local fake_seg = { foo = function(a, b, c) return 0 end }
+					cells[dx][y].shapes = { {["segment"] = fake_seg, ["path"] = event_list[i][4]} }
+
 					str = str.."["..dx.."]["..y.."].w = "..w..", "
 				end
 			else
@@ -88,6 +94,10 @@ local GRID
 		if w ~= 0 then
 			for dx = 1, x do
 				cells[dx][y].initialWindingNumber = w
+
+				local fake_seg = { foo = function(a, b, c) return 0 end }
+				cells[dx][y].shapes = { {["segment"] = fake_seg, ["path"] = event_list[i][4]} }
+
 				str = str.."["..dx.."]["..y.."].w = "..w..", "
 			end
 			--print(str)
@@ -286,14 +296,14 @@ local GRID
 	    				flag = true
 			    	--	print("caseup")
 		    			-- leave above, increment initial winding number
-		    			table.insert(event_list, {1, i, j})
+		    			table.insert(event_list, {1, i, j, path})
 	    				--print(i, j, "->", i, j+1)
 		    			i, j = i, j+1
 		    		end
 		    	elseif intersectSegmentCell(i, j-1, cells, segment) then -- leave under, decrement initial winding number  
 	    			flag = true
 		    	--	print("casedown")
-	    			table.insert(event_list, {-1, i, j})
+	    			table.insert(event_list, {-1, i, j, path})
 	    			--print(i, j, "->", i, j-1)
 	    			i, j = i, j-1
     			end 
@@ -305,7 +315,7 @@ local GRID
 			    			-- leave through the right, store a new closing segment if segment's end is not over the cell
 			    			if  cells[i][j].ymax > y[#y] then
 
-			    				-- [LC] I think this is wrong! x1 = x2 = x[#x], 
+			    				-- [LC] I think this was wrong! x1 = x2 = x[#x], 
 			    				-- and y1 = y[#y], y2 = cells[i][j].ymax
 			    				local newx, newy = {x[#x], x[#x]}, {y[#y], cells[i][j].ymax}
 

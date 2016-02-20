@@ -60,22 +60,22 @@ local GRID
 	local function fixLineWindingNumber(cells, event_list)
 		local str = ""
 		local w = event_list[#event_list][1]
-		local x, y =  event_list[#event_list][2], event_list[#event_list][3]
-		for i = #event_list -1, 1, -1 do
-			next_y = event_list[i][3]
-			if next_y == y then 
-				next_x = event_list[i][2]
+		local y, x = event_list[#event_list][2], event_list[#event_list][3]
+		for i = #event_list-1, 1, -1 do
+			next_y = event_list[i][2]
+			if next_y == y then
+				next_x = event_list[i][3]
 			else
 				next_x = 1
 			end
 			if w ~= 0 then
-				for dx = next_x, x-1 do
-					cells[dx][y].initialWindingNumber = w
+				for dx = next_x + 1, x-1 do
+					cells[y][dx].initialWindingNumber = w
 
 					-- This is a "fake" segment, just to correctly
 					-- paint the cell
 					local fake_seg = { foo = function(a, b, c) return 0 end }
-					cells[dx][y].shapes = { {["segment"] = fake_seg, ["path"] = event_list[i][4]} }
+					cells[y][dx].shapes = { {["segment"] = fake_seg, ["path"] = event_list[i][4]} }
 
 					str = str.."["..dx.."]["..y.."].w = "..w..", "
 				end
@@ -89,14 +89,14 @@ local GRID
 			else 
 				w = w + event_list[i][1] 
 			end
-			x, y = event_list[i][3], next_y
+			y, x = event_list[i][3], next_y
 		end
 		if w ~= 0 then
 			for dx = 1, x do
-				cells[dx][y].initialWindingNumber = w
+				cells[y][dx].initialWindingNumber = w
 
 				local fake_seg = { foo = function(a, b, c) return 0 end }
-				cells[dx][y].shapes = { {["segment"] = fake_seg, ["path"] = event_list[i][4]} }
+				cells[y][dx].shapes = { {["segment"] = fake_seg, ["path"] = event_list[i][4]} }
 
 				str = str.."["..dx.."]["..y.."].w = "..w..", "
 			end

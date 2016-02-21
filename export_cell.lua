@@ -9,7 +9,10 @@ local primitive2path = {}
 function primitive2path.linear_segment(prim, thick)
     thick = thick or 3
 
-	local x0, y0, x1, y1 = prim.x0, prim.y0, prim.x1, prim.y1
+	-- local x0, y0, x1, y1 = prim.x0, prim.y0, prim.x1, prim.y1
+    -- Adaptação pro código da Alana:
+    local x0, x1 = table.unpack(prim.x)
+    local y0, y1 = table.unpack(prim.y)
 
 	local built = path.path()
 
@@ -79,7 +82,10 @@ local function drawBoundingBox(xmin, ymin, xmax, ymax, elements)
     end
 end
 
-function _M.export_cell(cell)
+function _M.export_cell(cell, filename)
+
+    filename = filename or "cell"
+
 	local element, scene = require("element"), require("scene")
 
 	local elements = {}
@@ -100,7 +106,7 @@ function _M.export_cell(cell)
     drawBoundingBox(cell.xmin, cell.ymin, cell.xmax, cell.ymax, elements)
 
     local complete_scene = scene.scene(elements)
-    local output = assert(io.open("cell.svg", "wb"))
+    local output = assert(io.open("cells\\" .. filename .. ".svg", "wb"))
 
     require("svg").render(complete_scene, {cell.xmin, cell.ymin, cell.xmax, cell.ymax}, output)
 

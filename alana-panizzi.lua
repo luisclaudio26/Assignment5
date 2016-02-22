@@ -81,7 +81,7 @@
 	    		cells[i][j] = {
 	    		["xmax"] = cell_width*(i), ["xmin"] =  cell_width*(i-1),
     			["ymax"] = cell_height*(j), ["ymin"] = cell_height*(j-1),
-    			["initialWindingNumber"] = 0, ["segments"] = {}, ["border"] = false }
+    			["initialWindingNumber"] = {}, ["segments"] = {}, ["border"] = false }
 
     		end
     		-- Define a border, so we can clip it when needed
@@ -98,7 +98,7 @@
 
 	--DONE AND WORKING	
 	local function findCellCoord(x, y, cells)
-		return floor(x/cells.width) + 1, floor(y/cells.height) + 1
+		return ceil(x/cells.width), ceil(y/cells.height)
 	end
 
 	--DONE AND WORKING
@@ -142,7 +142,6 @@
 		end
 		p = {}
 		p.k, p.segments = 0, {}
-		print("here")
 		monotonic_segment_implicit(p, 0, foo, x, y, typ, w)
 		return p.segments[0]
 	end
@@ -187,24 +186,28 @@
 	----------- uses my definition of segment (what a segment must have) --------------
 	-- DONE AND WORKING
 	local function createClosingCellSegment(x, y)
-		xmax, xmin, ymax, ymin = bounding_values(x, y)
+		local xmax, xmin, ymax, ymin = bounding_values(x, y)
+		local sign = util.sign(y[2] - y[1])
+		print(x[1], y[1], x[2], y[2])
+		local a, b = y[2] - y[1], x[1] - x[2]
+		local c =  -(a*x[1] + b*y[1])
 		return {["x"] = x, ["y"] = y, ["foo"] = winding_number_linear, 
 			["xmax"] = xmax, ["xmin"] = xmin, ["ymax"] = ymax, ["ymin"] = ymin,
-			["sign"] = -1}
+			["sign"] = sign, ["a"] = a, ["b"] = b, ["c"] = c}
 	end
 	-----------------------------------------------------------------------------------
 
 	--DONE AND WORKING
 	local function walkInPath(path, cells, path_counter)
 	    for l, segment in ipairs(path.segments) do
+	    	segment.type = path.fill_type
+			segment.paint = path.paint
 	    	local x, y = segment.x, segment.y
 	    	local finali, finalj = findCellCoord(x[#x], y[#y], cells)
 	    	local i, j = findCellCoord(x[1], y[1], cells)
-	    	message1 = "other"
-	    	if (finalj >= j) then segment_going_up = true
-	    		else segment_going_up = false end
-	    	if (finali >= i) then segment_going_right = true
-	    		else segment_going_right = false end
+	    	local segment_going_up    = finalj >= j
+	    	local segment_going_right = finali >= i
+
 		   	while true do
 		   		if not cells[i][j].segments[path_counter] then 
 					cells[i][j].segments[path_counter] = {}
@@ -212,43 +215,60 @@
 		    	table.insert(cells[i][j].segments[path_counter], segment)
 	    	-- (1) pf final control point inside this cell or did we reach a border of the viewport?
 		    	if (i == finali and j == finalj) or cells[i][j].border then 
+		    		print("break", i, j)
 		    		break --leaves the while loop and goes to another segment
 		    	end
 		    -- (3) Test respective cells. If up: test cell[i][j+1], cell[i][j-1], cell[i+1][j]; 
+		    	local flag = false
 	    		if segment_going_up then 
 	    			if intersectSegmentCell(i, j+1, cells, segment) then
 	    				flag = true
-			    	--	print("caseup")
-		    			table.insert(event_list, {1, i, j})
-	    				--print(i, j, "->", i, j+1)
-		    			i, j = i, j+1
+	    				print(i, j, "->", i, j+1)
+			    		i, j = i, j+1
+		    			table.insert(event_list, {1, i, j, path_counter}) --increase winding number value of next cell
+		    			cells[i][j].initialWindingNumber[path_counter] = 0
 		    		end
 		    	elseif intersectSegmentCell(i, j-1, cells, segment) then -- leave under, decrement initial winding number  
 	    			flag = true
-		    	--	print("casedown")
-	    			table.insert(event_list, {-1, i, j})
-	    			--print(i, j, "->", i, j-1)
+	    			table.insert(event_list, {-1, i, j, path_counter})
+	    			cells[i][j].initialWindingNumber[path_counter] = 0
+	    			print(i, j, "->", i, j-1)
 	    			i, j = i, j-1
     			end 
     			if not flag then
 		    		if segment_going_right then
 			    		if intersectSegmentCell(i+1, j, cells, segment) then
-				    	--	print("caseright")		
 		    				flag = true
 			    			-- leave through the right, store a new closing segment if segment's end is not over the cell
 			    			if  cells[i][j].ymax > y[#y] then
-			    				local s = createClosingCellSegment(path, {x[#x], cells[i][j].ymax}, {x[#x], y[#y]})
+		    					local s = createClosingCellSegment( {x[#x], x[#x]}, {y[#y], cells[i][j].ymax})
+		    					s.paint = path.paint
+								s.type = path.fill_type
+		    					if not cells[i][j].segments[path_counter] then 
+									cells[i][j].segments[path_counter] = {}
+								end	
 			    				table.insert(cells[i][j].segments[path_counter], s)
 			    			end
-			    			--print(i, j, "->", i+1, j)
-		    				i, j = i+1, j
+			    			cells[i][j].initialWindingNumber[path_counter] = 0
+			    			i, j = i+1, j
+			    			print(i, j, "->", i+1, j)
 			    		end
 			    	elseif intersectSegmentCell(i-1, j, cells, segment) then
-			    		--print("caseleft")
-		    			--leave through the left, do nothing
+		    			--leave through the left, build segment
 		    			flag = true
-		    			--print(i, j, "->", i-1, j)
+		    			print(i, j, "->", i-1, j)
 						i, j = i-1, j
+						if cells[i][j].ymax > y[1] then
+		    				local s = createClosingCellSegment({x[1], x[1]}, {cells[i][j].ymax, y[1]})
+		    				s.type = path.fill_type
+							s.paint = path.paint
+		    				if not cells[i][j].segments[path_counter] then 
+								cells[i][j].segments[path_counter] = {}
+							end	
+		    				table.insert(cells[i][j].segments[path_counter], s)
+		    			end
+		    			cells[i][j].initialWindingNumber[path_counter] = 0
+		    			
 			    	end
 		    	end
 		    	if not flag then 
@@ -266,13 +286,15 @@
 	--needs a key as well so we order this array by this particular table position
 	local function CountingSort(array, key)
 		local count = {}
+		local elem_max, elem_min = array[1][key], array[1][key]
 	    for j = 1, #array do
 	    	i = array[j][key]
 	    	if not count[i] then count[i] = 0 end
 	        count[i] = count[i] + 1
+	        elem_max, elem_min = max(elem_max, i), min(elem_min, i)
 	    end
 	    local total = 1
-		for i  = 1, #array do
+		for i  = elem_min, elem_max do
 			if not count[i] then count[i] = 0 end
 		    local oldCount = count[i]
 		    count[i] = total
@@ -287,11 +309,11 @@
 	end
 
 	--DONE AND WORKING
-	local function fixLineWindingNumber(c, event_list)
+	local function fixLineWindingNumber(cells, event_list)
 		local str = ""
-		local cells = c
 		local w = event_list[#event_list][1]
 		local x, y =  event_list[#event_list][2], event_list[#event_list][3]
+		local path = event_list[#event_list][4]
 		for i = #event_list -1, 1, -1 do
 			next_y = event_list[i][3]
 			if next_y == y then 
@@ -301,8 +323,8 @@
 			end
 			print(x, next_x, y, next_y)
 			if w ~= 0 then
-				for dx = next_x, x-1 do
-					cells[dx][y].initialWindingNumber = w
+				for dx = next_x, x - 1 do
+					cells[dx][y].initialWindingNumber[path] = w
 					str = str.."cell["..dx.."]["..y.."] = "..w..", "
 				end
 			else
@@ -315,16 +337,16 @@
 			else 
 				w = w + event_list[i][1] 
 			end
-			x, y = event_list[i][2], next_y
+			x, y, path = event_list[i][2], event_list[i][3], event_list[i][4] 
 		end
 		if w ~= 0 then
 			for dx = 1, x do
-				cells[dx][y].initialWindingNumber = w
+				cells[dx][y].initialWindingNumber[path] = w
 				str =  str.."cell["..dx.."]["..y.."] = "..w..", "
 			end
 			print(str)
 		end
-		return cells
+		print(str)
 		-- Loop through line changing winding number 'tilatl the net winding number is zero
 	    -- RETURN VOID
 	end
@@ -348,19 +370,18 @@
 			end
 		end
 	    -- 4) Sort event_list -> insertion_sort (or any other stable sort)
-		local x_sorted_event_list = CountingSort(event_list, 2) -- (sort by x line)
-		local y_sorted_event_list = CountingSort(event_list, 3) -- (sort by x line)
-		for i in pairs(event_list) do
+		
+		for i in ipairs(event_list) do
 			print(i, event_list[i][1], event_list[i][2], event_list[i][3] )
 		end
-		for i in pairs(y_sorted_event_list) do
+		local x_sorted_event_list = CountingSort(event_list, 2) -- (sort by x line)
+		local y_sorted_event_list = CountingSort(x_sorted_event_list, 3) -- (sort by x line)
+		for i in ipairs(y_sorted_event_list) do
 			print(i, y_sorted_event_list[i][1], y_sorted_event_list[i][2], y_sorted_event_list[i][3] )
 		end
-
+		print("------------------------------------")
 		-- 5) fix initial winding numbers
-		local c = fixLineWindingNumber(cells, y_sorted_event_list)
-		print(c[10][10].initialWindingNumber)
-
+		fixLineWindingNumber(cells, y_sorted_event_list)
 		scene.cells = cells
 	    -- RETURN: FILLED GRID
 	end
@@ -370,32 +391,35 @@
 		local sign = 0
 		local colors, k, c =  {}, 1, {}
 		local i, j = findCellCoord(x, y, cells)
-		--[[if not cells[i][j].drawn then 
-			export_cell.export_cell(cells[i][j], i, j)
+		if not cells[i][j].drawn then 
+			export_cell.export_cell(cells, i, j)
 		 	cells[i][j].drawn = true
-		end--]]
-		for l, segment_list in pairs(cells[i][j].segments) do
-			winding_number  = cells[i][j].initialWindingNumber
-			local path =  cells.paths[l]
-			local flag = true
-			for i, segment in pairs(segment_list) do
-				if segment.ymin < y and y <= segment.ymax and 
-					segment.xmax >= x then 
-					--if winding_number ~= 0 then print(x,y, i, j) end
-					flag = false
-					sign = segment.foo(segment, x, y)
-					winding_number = sign + winding_number
+		end
+		if (cells[i][j].initialWindingNumber) then
+			for l, initialWindingNumber in pairs(cells[i][j].initialWindingNumber) do
+				winding_number  = initialWindingNumber
+				local path =  cells.paths[l]
+				if cells[i][j].segments[l] then
+					for i, segment in pairs(cells[i][j].segments[l]) do
+						if segment.ymin < y and y <= segment.ymax and 
+							segment.xmax >= x then 
+							sign = segment.foo(segment, x, y)
+							winding_number = sign + winding_number
+						end
+					end
 				end
-			end
-			--if flag and y < 180 then print (x, y, i,j, winding_number) end
-			if (path.fill_type == "eofill" and (math.abs(winding_number) % 2 ~= 0)) or
-				(path.fill_type == "fill" and winding_number ~= 0)  then
-				local paint = path.paint 
-				c = paint.foo(paint.data, x, y, paint)
-				colors[k] = c
-				k = k+1
-				if (c[4] == 1) then
-					break 
+				--if winding_number == 0 and cells[i][j].initialWindingNumber ~= 0 then 
+					--print(x, y, i, j, cells[i][j].initialWindingNumber ) end
+				--if flag and y < 180 then print (x, y, i, j, winding_number) end
+				if (path.fill_type == "eofill" and (math.abs(winding_number) % 2 ~= 0)) or
+					(path.fill_type == "fill" and winding_number ~= 0)  then
+					local paint = path.paint 
+					c = paint.foo(paint.data, x, y, paint)
+					colors[k] = c
+					k = k+1
+					if (c[4] == 1) then
+						break 
+					end
 				end
 			end
 		end
@@ -1270,7 +1294,6 @@
 		local index = create_segment(p, i, foo, u, v, w)
 		--quadratic precomputations
 		if typ == "quadratic" or typ == "rquadratic" then
-			print("here2")
 			if (not w) then w = 1 end
 			local pts, klm, b2p = {}, {}, {}
 			pts = adjugate(u[1], u[2], u[3], v[1], v[2], v[3], 1, w, 1)
@@ -1283,7 +1306,6 @@
 			p.segments[i+p.k].sign = sign
 			p.segments[i+p.k].signx = util.sign(u[3] - u[1])
 			p.segments[i+p.k].a = {a, b, c}
-			print("here2")
 			if a*u[2] + b*v[2] + c*w > 0 then
 				p.segments[i+p.k].triangletoright = true
 				--print("dir")
@@ -1295,9 +1317,7 @@
 				local xt, yt = find_triangle_r(u,v, p.segments[i+p.k].triangletoright)
 				p.segments[i+p.k].triangle = {["x"] = xt, ["y"] = yt}
 			else
-
 				p.segments[i+p.k].triangle = {["x"] = u, ["y"] = v}
-				print(concat(p.segments[i+p.k].triangle.x), concat(p.segments[i+p.k].triangle.y))
 			end
 		--cubic precomputations
 		elseif typ == "cubic" then

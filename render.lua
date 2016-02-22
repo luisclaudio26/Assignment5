@@ -12,363 +12,6 @@ local floor, ceil, min, max, sqrt, inf = math.floor, math.ceil, math.min, math.m
 local _M = driver.new()
 local prepare = {}
 
--------------------------------------------------------------------------------------
-	-------------------------------- GRID FUNCTIONS -------------------------------------
-	-------------------------------------------------------------------------------------l]
-
-	-- Contains (1) the cell coordinates and (2) the initial winding number increment
-	local event_list = {}
-	local cell_size = 10
-
-	--DONE AND WORKING
-	local function computeGridDimension(scene)
-	    -- this should return a "optimal" width and height after
-	    -- We will need the viewport info about width and height
-	    -- added to render: scene.width, scene.height =  width, height
-
-	    -- Now we will make a fixed grid, with a size cell_size + extra_space
-	    -- All cells must have the same size, so..
-	    local extra_space_width = (scene.width%cell_size)/floor(scene.width/cell_size)
-	    local extra_space_height = (scene.height%cell_size)/floor(scene.height/cell_size)
-	    return cell_size+ extra_space_width , cell_size+ extra_space_height
-	end
-
-	--DONE AND WORKING
-	local function makeGrid(window_width, window_height, cell_width, cell_height)
-	    -- returns an empty grid (a bidimensional table), where each cell
-	    -- contains (1) its bounding box and (2) a table with the intersecting segments
-	    -- and the (3) initial winding number
-	    local grid_width, grid_height = window_width/cell_width, window_height/cell_height
-	    local cells = {["width"]  = cell_width, ["height"]  = cell_width}
-	    for i = 0, grid_width + 1 do
-	    	cells[i] = {}
-	    	for j = 0, grid_height + 1 do
-	    		cells[i][j] = {
-	    		["xmax"] = cell_width*(i), ["xmin"] =  cell_width*(i-1),
-    			["ymax"] = cell_height*(j), ["ymin"] = cell_height*(j-1),
-    			["initialWindingNumber"] = 0, ["segments"] = {}, ["border"] = false }
-
-    		end
-    		-- Define a border, so we can clip it when needed
-    		cells[i][0].border = true
-    		cells[i][grid_width + 1].border = true
-    	end
-    	for j = 0, grid_width + 1 do
-    		cells[0][j].border = true
-    		cells[grid_height + 1][j].border = true
-    	end
-	    -- RETURN: A TABLE WITH FORMAT CELL[i][j] = {xmin, ymin, xmax, ymax, initialWindingNumber, segments = {} }
-	    return cells
-	end
-
-	--DONE AND WORKING
-	local function findCellCoord(x, y, cells)
-		return floor(x/cells.width) + 1, floor(y/cells.height) + 1
-	end
-
-	--DONE AND WORKING
-	----------------------- uses my definition of segment and rayCastingFunction-----------------------
-	local function rayCasting(segment, xmin, xmax, ymin, ymax)
-		local rayCastingFunction = segment.foo
-		-- Tests if it intersect
-		if segment.ymax >= ymax and segment.ymin <= ymax then
-			if abs(rayCastingFunction(segment, xmin, ymin) +
-				rayCastingFunction(segment, xmax, ymin))  == 1  or
-			   abs(rayCastingFunction(segment, xmin, ymax) +
-				rayCastingFunction(segment, xmax, ymax)) == 1 then
-				return true
-			end
-		end
-		return false
-	end
-	---------------------------------------------------------------------------------------------------
-
-	---------------------- uses my definition of segment and rayCastingFunction----------------
-	--DONE AND WORKING
-	local function create_mirror_segment(segment)
-		local y, x = segment.x, segment.y
-		local new_segment = {}
-		local foo = segment.foo
-		new_segment.x, new_segment.y = x, y
-		if foo == winding_number_linear then
-			local a, b = y[2] - y[1], x[1] - x[2]
-			local c =  -(a*x[1] + b*y[1])
-			new_segment.a, new_segment.b, new_segment.c = a, b, c
-			new_segment.foo = foo
-			new_segment.xmax, new_segment.xmin,
-				new_segment.ymax, new_segment.ymin  = bounding_values(x, y)
-			return new_segment
-		end
-		if foo == winding_implicit_quadratic then
-			w = segment.w
-			if w then typ = "rquadratic" else typ = "quadratic" end
-		else -- cubic
-			typ = "cubic"
-		end
-		p = {}
-		p.k, p.segments = 0, {}
-		print("here")
-		monotonic_segment_implicit(p, 0, foo, x, y, typ, w)
-		return p.segments[0]
-	end
-	-------------------------------------------------------------------------------------------------
-	--DONE AND WORKING FOR TESTED EXAMPLES (MAYBE WE CAN TRY TO FIND ERRORS LATER)
-	local function intersectSegmentCell(i, j, cells, segment)
-	    -- 1) Check path bounding box against Cell
-	    --      -> if it is fully inside, then return true
-	    --      -> if it is not, check if one of the extreme control points are inside the cell.
-	    ----------------------- uses my definition of segment -----------------------
-	    local x, y = segment.x, segment.y
-	    -----------------------------------------------------------------------------
-	    local i1, j1 = findCellCoord(x[1], y[1], cells)
-	    local ifinal, jfinal = findCellCoord(x[#x], y[#y], cells)
-	    -- case final or first control point is inside cell
-	    if (i1 == i and j1 == j) or (ifinal == i and jfinal == j) then
-	    	return true
-	    end
-
-	    -- 2) Ray cast
-		--> check for intersection with right side
-	    --> If it does not intersect, check for intersection with top side (by rotating the cell)
-	    local xmin, xmax, ymin, ymax = cells[i][j].xmin, cells[i][j].xmax,
-	    	cells[i][j].ymin, cells[i][j].ymax
-		if rayCasting(segment, xmin, xmax, ymin, ymax) then
-			return true
-		end
-		inv_segment = create_mirror_segment(segment)  -- Inverse ray casting
-		if rayCasting(inv_segment, ymin, ymax, xmin, xmax) then
-			return true
-		end
-		return false
-		--RETURN : BOOLEAN
-	end
-
-	--DONE AND WORKING
-	local function inside_cell(x, y, i, j, cells)
-		xi, yi = findCellCoord(x, y, cell)
-		return xi == i and yj == j
-	end
-
-	----------- uses my definition of segment (what a segment must have) --------------
-	-- DONE AND WORKING
-	local function createClosingCellSegment(x, y)
-		xmax, xmin, ymax, ymin = bounding_values(x, y)
-		return {["x"] = x, ["y"] = y, ["foo"] = winding_number_linear,
-			["xmax"] = xmax, ["xmin"] = xmin, ["ymax"] = ymax, ["ymin"] = ymin,
-			["sign"] = -1}
-	end
-	-----------------------------------------------------------------------------------
-
-	--DONE AND WORKING
-	local function walkInPath(path, cells, path_counter)
-	    for l, segment in ipairs(path.segments) do
-	    	local x, y = segment.x, segment.y
-	    	local finali, finalj = findCellCoord(x[#x], y[#y], cells)
-	    	local i, j = findCellCoord(x[1], y[1], cells)
-	    	message1 = "other"
-	    	if (finalj >= j) then segment_going_up = true
-	    		else segment_going_up = false end
-	    	if (finali >= i) then segment_going_right = true
-	    		else segment_going_right = false end
-		   	while true do
-		   		if not cells[i][j].segments[path_counter] then
-					cells[i][j].segments[path_counter] = {}
-				end
-		    	table.insert(cells[i][j].segments[path_counter], segment)
-	    	-- (1) pf final control point inside this cell or did we reach a border of the viewport?
-		    	if (i == finali and j == finalj) or cells[i][j].border then
-		    		break --leaves the while loop and goes to another segment
-		    	end
-		    -- (3) Test respective cells. If up: test cell[i][j+1], cell[i][j-1], cell[i+1][j];
-	    		if segment_going_up then
-	    			if intersectSegmentCell(i, j+1, cells, segment) then
-	    				flag = true
-			    	--	print("caseup")
-		    			table.insert(event_list, {1, i, j})
-	    				--print(i, j, "->", i, j+1)
-		    			i, j = i, j+1
-		    		end
-		    	elseif intersectSegmentCell(i, j-1, cells, segment) then -- leave under, decrement initial winding number
-	    			flag = true
-		    	--	print("casedown")
-	    			table.insert(event_list, {-1, i, j})
-	    			--print(i, j, "->", i, j-1)
-	    			i, j = i, j-1
-    			end
-    			if not flag then
-		    		if segment_going_right then
-			    		if intersectSegmentCell(i+1, j, cells, segment) then
-				    	--	print("caseright")
-		    				flag = true
-			    			-- leave through the right, store a new closing segment if segment's end is not over the cell
-			    			if  cells[i][j].ymax > y[#y] then
-			    				local s = createClosingCellSegment(path, {x[#x], cells[i][j].ymax}, {x[#x], y[#y]})
-			    				table.insert(cells[i][j].segments[path_counter], s)
-			    			end
-			    			--print(i, j, "->", i+1, j)
-		    				i, j = i+1, j
-			    		end
-			    	elseif intersectSegmentCell(i-1, j, cells, segment) then
-			    		--print("caseleft")
-		    			--leave through the left, do nothing
-		    			flag = true
-		    			--print(i, j, "->", i-1, j)
-						i, j = i-1, j
-			    	end
-		    	end
-		    	if not flag then
-		    		print("errrooooooooooo")
-		    		break
-		    	end
-		    	--print("new cell", i, j)
-		    	flag = false
-	    	end
-	    end
-	        -- RETURN: VOID
-	end
-
-	--DONE AND WORKING
-	--needs a key as well so we order this array by this particular table position
-	local function CountingSort(array, key)
-		local count = {}
-	    for j = 1, #array do
-	    	i = array[j][key]
-	    	if not count[i] then count[i] = 0 end
-	        count[i] = count[i] + 1
-	    end
-	    local total = 1
-		for i  = 1, #array do
-			if not count[i] then count[i] = 0 end
-		    local oldCount = count[i]
-		    count[i] = total
-		    total = total + oldCount
-		end
-		local output = {}
-		for i, x in pairs(array) do
-		    output[count[x[key]]] = x
-		    count[x[key]] = count[x[key]] + 1
-		end
-		return output
-	end
-
-	--DONE AND WORKING
-	local function fixLineWindingNumber(c, event_list)
-		local str = ""
-		local cells = c
-		local w = event_list[#event_list][1]
-		local x, y =  event_list[#event_list][2], event_list[#event_list][3]
-		for i = #event_list -1, 1, -1 do
-			next_y = event_list[i][3]
-			if next_y == y then
-				next_x = event_list[i][2]
-			else
-				next_x = 1
-			end
-			print(x, next_x, y, next_y)
-			if w ~= 0 then
-				for dx = next_x, x-1 do
-					cells[dx][y].initialWindingNumber = w
-					str = str.."cell["..dx.."]["..y.."] = "..w..", "
-				end
-			else
-				print("w=0")
-			end
-			if next_y ~= y then
-				w = event_list[i][1]
-				print(str)
-				str = ""
-			else
-				w = w + event_list[i][1]
-			end
-			x, y = event_list[i][2], next_y
-		end
-		if w ~= 0 then
-			for dx = 1, x do
-				cells[dx][y].initialWindingNumber = w
-				str =  str.."cell["..dx.."]["..y.."] = "..w..", "
-			end
-			print(str)
-		end
-		return cells
-		-- Loop through line changing winding number 'tilatl the net winding number is zero
-	    -- RETURN VOID
-	end
-
-	--DONE AND WORKING
-	local function prepareGrid(scene)
-	    -- 1) Compute grid dimensions
-	    local cell_width, cell_height = computeGridDimension(scene)
-	    -- 2) Create grid
-		local cells = makeGrid(scene.width, scene.height, cell_width, cell_height)
-	    -- 3) loop through paths inside scene
-		-- insert here yout respective sample loop
-		cells.paths = {}
-		for i, e in ipairs(scene.inverse_shapes_list) do
-			if e.shape.type == "path" then
-				cells.paths[i] =  e.shape
-				walkInPath(e.shape, cells, i)
-			else
-				-- we have to think about it
-				-- maybe a function walkInCircle/Triangle/Polygon or segment them
-			end
-		end
-	    -- 4) Sort event_list -> insertion_sort (or any other stable sort)
-		local x_sorted_event_list = CountingSort(event_list, 2) -- (sort by x line)
-		local y_sorted_event_list = CountingSort(event_list, 3) -- (sort by x line)
-		for i in pairs(event_list) do
-			print(i, event_list[i][1], event_list[i][2], event_list[i][3] )
-		end
-		for i in pairs(y_sorted_event_list) do
-			print(i, y_sorted_event_list[i][1], y_sorted_event_list[i][2], y_sorted_event_list[i][3] )
-		end
-
-		-- 5) fix initial winding numbers
-		local c = fixLineWindingNumber(cells, y_sorted_event_list)
-		print(c[10][10].initialWindingNumber)
-
-		scene.cells = cells
-	    -- RETURN: FILLED GRID
-	end
-
-	local function sample_grid(scene, x, y)
-		local cells = scene.cells
-		local sign = 0
-		local colors, k, c =  {}, 1, {}
-		local i, j = findCellCoord(x, y, cells)
-		--[[if not cells[i][j].drawn then
-			export_cell.export_cell(cells[i][j], i, j)
-		 	cells[i][j].drawn = true
-		end--]]
-		for l, segment_list in pairs(cells[i][j].segments) do
-			winding_number  = cells[i][j].initialWindingNumber
-			local path =  cells.paths[l]
-			local flag = true
-			for i, segment in pairs(segment_list) do
-				if segment.ymin < y and y <= segment.ymax and
-					segment.xmax >= x then
-					--if winding_number ~= 0 then print(x,y, i, j) end
-					flag = false
-					sign = segment.foo(segment, x, y)
-					winding_number = sign + winding_number
-				end
-			end
-			--if flag and y < 180 then print (x, y, i,j, winding_number) end
-			if (path.fill_type == "eofill" and (math.abs(winding_number) % 2 ~= 0)) or
-				(path.fill_type == "fill" and winding_number ~= 0)  then
-				local paint = path.paint
-				c = paint.foo(paint.data, x, y, paint)
-				colors[k] = c
-				k = k+1
-				if (c[4] == 1) then
-					break
-				end
-			end
-		end
-		colors[k] = {1, 1, 1, 1}
-	    return compose_colors(colors, k)
-	end
-
-
 ---------------------- shortcut operations--------------------------------------
 local function sign(x) return (x<0 and -1) or 1 end
 
@@ -714,7 +357,6 @@ local implicitEq = {
     local p = prod_biP(f10,f21)
     local q = prod_biP(f20,f20)
     local R = {0,0,p[1]-q[1],1,0,p[2]-q[2],0,1,p[3]-q[3],1,1,p[4]-q[4],2,0,p[5]-q[5],0,2,p[6]-q[6]}
-    -- for i=1,#R-2,3 do print(R[i],R[i+1],R[i+2]) end
     return biP_to_fun(R)
   end,
   function (x_,y_)
@@ -741,7 +383,6 @@ local implicitEq = {
                1,2, -p5[8],
                3,0, -p5[9],
                0,3, -p5[10]}
-    -- for i=1,#R-2,3 do print(R[i],R[i+1],R[i+2]) end
     return biP_to_fun(R)
   end
 }
@@ -777,6 +418,221 @@ local implicit = {
             s = s, sT2 = sT2, sT3 = sT3, sR = sR, sl = sl, type = "cubic"}
   end
 }
+
+
+-- prepare grid
+-------------------------------------------------------------------------------------
+	-------------------------------- GRID FUNCTIONS -------------------------------------
+	-------------------------------------------------------------------------------------l]
+
+	-- Contains (1) the cell coordinates and (2) the initial winding number increment
+	local cell_size = 10
+
+	--DONE AND WORKING
+	local function computeGridDimension(scene)
+	    -- this should return a "optimal" width and height after
+	    -- We will need the viewport info about width and height
+	    -- added to render: scene.width, scene.height =  width, height
+
+	    -- Now we will make a fixed grid, with a size cell_size + extra_space
+	    -- All cells must have the same size, so..
+      -- The old calculation is equivalent to this:
+	    return floor(scene.height/cell_size), floor(scene.width/cell_size)
+	end
+
+	--DONE AND WORKING
+	local function findCellCoord(x, y, grid) -- 0 and >n will mean out of the grid
+    return floor(grid.n*y*(1/grid.height) + 1), floor(grid.m*x*(1/grid.width) + 1)
+	end
+
+	-----------------------------------------------------------------------------------
+  local function insideGrid(i,j,m,n) -- Will try to use this later
+    return  (i > 0 and j > 0 and i < n+1 and j < m+1)
+  end
+
+  local function alocate_and_insert(grid,i,j,i_path,segment)
+    grid[i] = grid[i] or {}
+    if grid[i][j] then
+      if grid[i][j].order[#grid[i][j].order] ~= i_path then table.insert(grid[i][j].order, i_path) end
+    else grid[i][j] = {order = {i_path}} end
+
+    grid[i][j][i_path] = grid[i][j][i_path] or {initialWindingNumber = 0, segments = {}}
+    table.insert(grid[i][j][i_path].segments, segment)
+  end
+
+  local function alocate_and_add_winding(grid,i,j,i_path,s)
+    grid[i] = grid[i] or {}
+    if grid[i][j] then
+      if grid[i][j].order[#grid[i][j].order] ~= i_path then table.insert(grid[i][j].order, i_path) end
+    else grid[i][j] = {order = {i_path}} end
+
+    grid[i][j][i_path] = grid[i][j][i_path] or {initialWindingNumber = 0, segments = {}}
+    grid[i][j][i_path].initialWindingNumber = grid[i][j][i_path].initialWindingNumber + s
+  end
+
+	--DONE AND WORKING
+	local function walkInPath(grid, segments, i_path)
+    local event_list = {}
+	  for l, segment in ipairs(segments) do
+	    local x, y = segment.x, segment.y
+      local n, m = grid.n, grid.m
+	    local begi, begj = findCellCoord(x[1], y[1], grid)
+      local finali, finalj = findCellCoord(x[#x], y[#y], grid)
+      local segment_going_up = (finali >= begi)
+      local segment_going_right = (finalj >= begj)
+      local i, j = begi, begj
+
+      while true do
+        alocate_and_insert(grid,i,j,i_path,segment)
+	    	-- (1) pf final control point inside this cell or did we reach a border of the viewport?
+		    if (i == finali and j == finalj) then--or cells[i][j].border then
+		    	break --leaves the while loop and goes to another segment
+		    end
+		    -- (3) Test respective cells. If up: test cell[i+1][j], cell[i][j+1], cell[i][j-1];
+        local xmin, xmax =  (j-1)*grid.cell_width, j*grid.cell_width
+  	    local ymin, ymax = (i-1)*grid.cell_height, i*grid.cell_height
+        local w_up_left, w_up_right, w_down_left, w_down_right = 0, 0, 0, 0
+	    	if segment_going_up then
+          w_up_left  = winding[segment.type](segment,xmin,ymax)
+          w_up_right = winding[segment.type](segment,xmax,ymax)
+          if (w_up_left ~= 0 and w_up_right == 0) or (w_up_right ~= 0 and w_up_left == 0) then--if go up
+	    		--if intersectSegmentCell(i, j+1, grid, segment) then ----This function does too much
+            -- alocate_and_add_winding(grid,i+1,j,i_path,1)
+		    		i = i+1
+            event_list[#event_list+1] = {1,i,j}
+          elseif segment_going_right then -- if go right
+            if x[#x] > xmax then
+	    			  j = j+1
+              if (i == finali and j == finalj) then
+                if segments[l+1].s > 0 then
+                  alocate_and_insert(grid,i,j-1,i_path,implicit[1](x[#x],y[#y],x[#x],ymax)) --insert line going up
+                else
+                  alocate_and_insert(grid,i,j-1,i_path,implicit[1](x[#x],ymax,x[#x],y[#y])) --insert line going down
+                end
+              end
+            else break end
+    			else                            -- if go left
+            if x[#x] < xmin then
+              if (i == begi and j == begj) and ymin ~= y[1] then
+                alocate_and_insert(grid,i,j-1,i_path,implicit[1](x[1],ymax,x[1],y[1])) --insert line going down
+              end
+              j = j-1
+            else break end
+          end
+        else
+          w_down_left =  winding[segment.type](segment,xmin,ymin)
+          w_down_right = winding[segment.type](segment,xmax,ymin)
+          if (w_down_left ~= 0 and w_down_right == 0) or (w_down_right ~= 0 and w_down_left == 0) or ymin == y[1] then--if go down
+            -- alocate_and_add_winding(grid,i,j,i_path,-1)
+            event_list[#event_list+1] = {-1,i,j}
+            i = i-1
+          elseif segment_going_right then -- if go right
+            if x[#x] > xmax then
+	    			  j = j+1
+              if (i == finali and j == finalj) then
+                if segments[l+1].s > 0 then
+                  alocate_and_insert(grid,i,j-1,i_path,implicit[1](x[#x],y[#y],x[#x],ymax)) --insert line going up
+                else
+                  alocate_and_insert(grid,i,j-1,i_path,implicit[1](x[#x],ymax,x[#x],y[#y])) --insert line going down
+                end
+              end
+            else break end
+    			else                            -- if go left
+            if x[#x] < xmin then
+              if (i == begi and j == begj) and ymin ~= y[1] then
+                alocate_and_insert(grid,i,j-1,i_path,implicit[1](x[1],y[1],x[1],ymax)) --insert line going down
+              end
+              j = j-1
+            else break end
+          end
+        end
+      end
+    end
+    return event_list
+	        -- RETURN: VOID
+	end
+
+	--DONE AND WORKING
+	--needs a key as well so we order this array by this particular table position
+	local function CountingSort(array, key)
+		local count = {}
+    local ind = {}
+	  for j = 1, #array do
+	  	i = array[j][key]
+      ind[#ind+1] = i
+	  	if not count[i] then count[i] = 0 end
+	    count[i] = count[i] + 1
+	  end
+	  local total = 1
+    local maxim = max(unpack(ind))
+		for i = 1,maxim do
+			if not count[i] then count[i] = 0 end
+		  local oldCount = count[i]
+		  count[i] = total
+		  total = total + oldCount
+		end
+		local output = {}
+		for i, x in pairs(array) do
+		    output[count[x[key]]] = x
+		    count[x[key]] = count[x[key]] + 1
+		end
+		return output
+	end
+
+  local function running_sum(grid, list, i_path)
+    for k = #list,2,-1 do
+      local wN,i,j = unpack(list[k])
+      local cell = grid[i][j]
+        for l = j-1,list[k-1][3],-1 do
+          alocate_and_add_winding(grid,i,l,i_path,wN)
+        end
+    end
+  end
+
+	--DONE AND WORKING
+	function prepare.grid(scene)
+	    -- 1) Compute grid dimensions
+    scene.grid = {}
+	  scene.grid.n, scene.grid.m = computeGridDimension(scene) --n x m grid
+    scene.grid.cell_width, scene.grid.cell_height = scene.width/scene.grid.n, scene.height/scene.grid.m
+    scene.grid.width, scene.grid.height = scene.width, scene.height --This could've been passed directly
+	    -- 2) Create grid
+		-- local cells = makeGrid(scene.width, scene.height, n, m)
+	    -- 3) loop through paths inside scene
+		-- insert here yout respective sample loop
+		for i, e in ipairs(scene.elements) do
+			local event_list = walkInPath(scene.grid, e.shape.segments, i)
+
+      local y_order = CountingSort(event_list, 2) -- (sort by y line)
+      local x_order = {y_order[1]}
+      -- for i,e in ipairs(y_order) do print(e[1],e[2],e[3]) end
+      for ind=2,#y_order do
+        local ind_order = {}
+        if y_order[ind][2]==x_order[1][2] then
+          x_order[#x_order+1] = y_order[ind]
+        else
+          x_order = CountingSort(x_order,3)
+          -- for i,e in ipairs(y_order) do print(e[1],e[2],e[3]) end
+          running_sum(scene.grid,x_order,i)
+          x_order = {y_order[ind]}
+        end
+      end
+		end
+    -- for i,e in pairs(scene.grid) do
+    --   if type(e) == "table" then
+    --     print(i)
+    --     for j,f in pairs(e) do
+    --       print(j)
+    --       for o,i_path in ipairs(f.order) do
+    --         print(o,i_path)
+    --       end
+    --     end
+    --   end
+    -- end
+	    -- 4) Sort event_list -> insertion_sort (or any other stable sort)
+	end
+
+
 
 
 -- prepare paths
@@ -960,21 +816,26 @@ local function preparescene(scene)
     element.paint.xf = element.paint.xf:inverse() * scene.xf:inverse()
     prepare[element.paint.type](element.paint)
   end
-  -- prepare.grid(scene)
+  prepare.grid(scene)
   return scene
 end
 
 -- sample scene at x,y and return r,g,b,a
 local function sample(scene, x, y)
   local color = {1,1,1,1}
-  for ind,e in ipairs(scene.elements) do
-    local shape, paint = e.shape, e.paint
-    if inside(shape,x,y) then
-      local wN = windingNumber(shape.segments,x,y)
-      if e.type == "fill" and wN ~= 0 then
-        color = blend(paint:color(x,y),color)
-      elseif e.type == "eofill" and wN % 2 == 1 then
-        color = blend(paint:color(x,y),color)
+  local k,l = findCellCoord(x,y,scene.grid)
+  if scene.grid[k] == nil then return unpack(color,1,4) end
+  if scene.grid[k][l] then
+    for ind,i in ipairs(scene.grid[k][l].order) do
+      local cell = scene.grid[k][l][i]
+      local shape, paint = scene.elements[i].shape, scene.elements[i].paint
+      if inside(shape,x,y) then
+        local wN = cell.initialWindingNumber + windingNumber(cell.segments,x,y)
+        if scene.elements[i].type == "fill" and wN ~= 0 then
+          color = blend(paint:color(x,y),color)
+        elseif scene.elements[i].type == "eofill" and wN % 2 == 1 then
+          color = blend(paint:color(x,y),color)
+        end
       end
     end
   end

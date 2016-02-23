@@ -391,10 +391,10 @@
 		local sign = 0
 		local colors, k, c =  {}, 1, {}
 		local i, j = findCellCoord(x, y, cells)
-		if not cells[i][j].drawn then 
-			export_cell.export_cell(cells, i, j)
-		 	cells[i][j].drawn = true
-		end
+		--if not cells[i][j].drawn then 
+		--	export_cell.export_cell(cells[i][j])
+		-- 	cells[i][j].drawn = true
+		--end
 		if (cells[i][j].initialWindingNumber) then
 			for l, initialWindingNumber in pairs(cells[i][j].initialWindingNumber) do
 				winding_number  = initialWindingNumber

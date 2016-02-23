@@ -1,14 +1,16 @@
 local driver = require"driver"
 local image = require"image"
 local chronos = require"chronos"
-
+local cub = require"cubic"
+  local cubic = cub.cubic
 local unpack = table.unpack
 local bezier = require("bezier")
 local util = require"util"
 local blue = require"blue"
 local significant = util.significant
 local floor, ceil, min, max, sqrt, inf = math.floor, math.ceil, math.min, math.max, math.sqrt, math.huge
-
+local quadr = require"quadratic"
+  local quadratic = quadr.quadratic
 local _M = driver.new()
 local prepare = {}
 
@@ -106,7 +108,7 @@ local function compute_rational_maxima(x0, x1, x2, w)
     local b = 2*(x0 - 2*w*x0 + 2*x1 - x2)
     local c = 2*(w*x0 - x1)
 
-    n, r1, s1, r2, s2 = _M.quadratic(a, b, c)
+    n, r1, s1, r2, s2 = quadratic(a, b, c)
 
     local out1, out2 = 0, 0
     if n > 0 then out1 = r1/s1 end
@@ -209,14 +211,14 @@ roots = {
     if p[2] then return {-p[1]/p[2]} end
   end,
   function (p) --degree 2
-    local n,t1,s1,t2,s2 = _M.quadratic(p[3],p[2],p[1])
+    local n,t1,s1,t2,s2 = quadratic(p[3],p[2],p[1])
     if n==2 then return {t1*(1/s1),t2*(1/s2)}
     elseif n==1 then return {t1*(1/s1)}
     else return {}
     end
   end,
   function (p) --degree 3
-    local n,t1,s1,t2,s2,t3,s3 = _M.cubic(p[4],p[3],p[2],p[1])
+    local n,t1,s1,t2,s2,t3,s3 = cubic(p[4],p[3],p[2],p[1])
     if n==3 then return {t1*(1/s1),t2*(1/s2),t3*(1/s3)}
     elseif n==2 then return {t1*(1/s1),t2*(1/s2)}
     elseif n==1 then return {t1*(1/s1)}
@@ -442,8 +444,17 @@ local implicit = {
 
 	--DONE AND WORKING
 	local function findCellCoord(x, y, grid) -- 0 and >n will mean out of the grid
-    return floor(grid.n*y*(1/grid.height) + 1), floor(grid.m*x*(1/grid.width) + 1)
+    return ceil(grid.n*y*(1/grid.height)), ceil(grid.m*x*(1/grid.width))
 	end
+
+  local function sameCell(i, j, ifinal, jfinal)
+    if ifinal == 0 or jfinal == 0 then
+      return (i == ifinal +1 and j == jfinal) or
+        (i == ifinal and j == jfinal + 1) or
+        (i == ifinal + 1 and j == jfinal + 1)
+    end
+    return i == ifinal and j == jfinal
+  end
 
 	-----------------------------------------------------------------------------------
   local function insideGrid(i,j,m,n) -- Will try to use this later
@@ -483,11 +494,12 @@ local implicit = {
       local i, j = begi, begj
 
       local it, Nmax = 1, 1000
-      while it < Nmax  do
+      while true  do
+        print(i, j, finali, finalj, table.concat(segment.x, ", "))
         it = it+1
         alocate_and_insert(grid,i,j,i_path,segment)
 	    	-- (1) pf final control point inside this cell or did we reach a border of the viewport?
-		    if (i == finali and j == finalj) then--or cells[i][j].border then
+		    if sameCell(i, j, finali, finalj) then--or cells[i][j].border then
 		    	break --leaves the while loop and goes to another segment
 		    end
 		    -- (3) Test respective cells. If up: test cell[i+1][j], cell[i][j+1], cell[i][j-1];

@@ -426,7 +426,7 @@ local implicit = {
 	-------------------------------------------------------------------------------------l]
 
 	-- Contains (1) the cell coordinates and (2) the initial winding number increment
-	local cell_size = 10
+	local cell_size = 30
 
 	--DONE AND WORKING
 	local function computeGridDimension(scene)
@@ -482,7 +482,9 @@ local implicit = {
       local segment_going_right = (finalj >= begj)
       local i, j = begi, begj
 
-      while true do
+      local it, Nmax = 1, 1000
+      while it < Nmax  do
+        it = it+1
         alocate_and_insert(grid,i,j,i_path,segment)
 	    	-- (1) pf final control point inside this cell or did we reach a border of the viewport?
 		    if (i == finali and j == finalj) then--or cells[i][j].border then
@@ -502,26 +504,24 @@ local implicit = {
             event_list[#event_list+1] = {1,i,j}
           elseif segment_going_right then -- if go right
             if x[#x] > xmax then
-	    			  j = j+1
-              if (i == finali and j == finalj) then
-                if segments[l+1].s > 0 then
-                  alocate_and_insert(grid,i,j-1,i_path,implicit[1](x[#x],y[#y],x[#x],ymax)) --insert line going up
-                else
-                  alocate_and_insert(grid,i,j-1,i_path,implicit[1](x[#x],ymax,x[#x],y[#y])) --insert line going down
-                end
-              end
-            else break end
+              j = j+1
+              alocate_and_insert(grid,i,j-1,i_path,implicit[1](x[#x],y[#y],x[#x],ymax)) --insert line going up
+            end
     			else                            -- if go left
             if x[#x] < xmin then
-              if (i == begi and j == begj) and ymin ~= y[1] then
+              --if y[1] > ymin then
                 alocate_and_insert(grid,i,j-1,i_path,implicit[1](x[1],ymax,x[1],y[1])) --insert line going down
-              end
+              --end
               j = j-1
-            else break end
+            end
           end
         else
           w_down_left =  winding[segment.type](segment,xmin,ymin)
           w_down_right = winding[segment.type](segment,xmax,ymin)
+          if ymin == y[#y] and x[#x] > xmin and x[#x] <= xmax then
+           event_list[#event_list+1] = {-1,i,j}
+           break
+          end
           if (w_down_left ~= 0 and w_down_right == 0) or (w_down_right ~= 0 and w_down_left == 0) or ymin == y[1] then--if go down
             -- alocate_and_add_winding(grid,i,j,i_path,-1)
             event_list[#event_list+1] = {-1,i,j}
@@ -529,24 +529,17 @@ local implicit = {
           elseif segment_going_right then -- if go right
             if x[#x] > xmax then
 	    			  j = j+1
-              if (i == finali and j == finalj) then
-                if segments[l+1].s > 0 then
-                  alocate_and_insert(grid,i,j-1,i_path,implicit[1](x[#x],y[#y],x[#x],ymax)) --insert line going up
-                else
-                  alocate_and_insert(grid,i,j-1,i_path,implicit[1](x[#x],ymax,x[#x],y[#y])) --insert line going down
-                end
-              end
-            else break end
+              alocate_and_insert(grid,i,j-1,i_path,implicit[1](x[#x],y[#y],x[#x],ymax)) --insert line going up
+            end
     			else                            -- if go left
             if x[#x] < xmin then
-              if (i == begi and j == begj) and ymin ~= y[1] then
-                alocate_and_insert(grid,i,j-1,i_path,implicit[1](x[1],y[1],x[1],ymax)) --insert line going down
-              end
+              alocate_and_insert(grid,i,j-1,i_path,implicit[1](x[1],ymax,x[1],y[1])) --insert line going down
               j = j-1
-            else break end
+            end
           end
         end
       end
+      print(it)
     end
     return event_list
 	        -- RETURN: VOID
@@ -583,6 +576,8 @@ local implicit = {
     for k = #list,2,-1 do
       local wN,i,j = unpack(list[k])
       local cell = grid[i][j]
+      --print(wN, i, j)
+      --for i,e in pairs(cell[i_path]) do print
         for l = j-1,list[k-1][3],-1 do
           alocate_and_add_winding(grid,i,l,i_path,wN)
         end
@@ -602,21 +597,11 @@ local implicit = {
 		-- insert here yout respective sample loop
 		for i, e in ipairs(scene.elements) do
 			local event_list = walkInPath(scene.grid, e.shape.segments, i)
+      local y_order = CountingSort(event_list, 3) -- (sort by y line)
+      local x_order = CountingSort(y_order, 2)
+      --for i,e in ipairs(x_order) do print(e[1],e[2],e[3]) end
 
-      local y_order = CountingSort(event_list, 2) -- (sort by y line)
-      local x_order = {y_order[1]}
-      -- for i,e in ipairs(y_order) do print(e[1],e[2],e[3]) end
-      for ind=2,#y_order do
-        local ind_order = {}
-        if y_order[ind][2]==x_order[1][2] then
-          x_order[#x_order+1] = y_order[ind]
-        else
-          x_order = CountingSort(x_order,3)
-          -- for i,e in ipairs(y_order) do print(e[1],e[2],e[3]) end
-          running_sum(scene.grid,x_order,i)
-          x_order = {y_order[ind]}
-        end
-      end
+      running_sum(scene.grid,x_order,i)
 		end
     -- for i,e in pairs(scene.grid) do
     --   if type(e) == "table" then

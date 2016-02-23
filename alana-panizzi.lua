@@ -73,7 +73,7 @@
 	    -- returns an empty grid (a bidimensional table), where each cell 
 	    -- contains (1) its bounding box and (2) a table with the intersecting segments
 	    -- and the (3) initial winding number
-	    local grid_width, grid_height = window_width/cell_width, window_height/cell_height
+	    local grid_width, grid_height = floor(window_width/cell_width), floor(window_height/cell_height)
 	    local cells = {["width"]  = cell_width, ["height"]  = cell_width}
 	    for i = 0, grid_width + 1 do
 	    	cells[i] = {}
@@ -86,11 +86,11 @@
     		end
     		-- Define a border, so we can clip it when needed
     		cells[i][0].border = true
-    		cells[i][grid_width + 1].border = true
+    		cells[i][grid_height + 1].border = true
     	end
-    	for j = 0, grid_width + 1 do 
+    	for j = 0, grid_height + 1 do 
     		cells[0][j].border = true
-    		cells[grid_height + 1][j].border = true
+    		cells[grid_width + 1][j].border = true
     	end
 	    -- RETURN: A TABLE WITH FORMAT CELL[i][j] = {xmin, ymin, xmax, ymax, initialWindingNumber, segments = {} }
 	    return cells
@@ -183,6 +183,15 @@
 		return xi == i and yj == j
 	end
 
+	local function sameCell(i, j, ifinal, jfinal)
+    	if ifinal == 0 or jfinal == 0 then
+	      	return (i == ifinal +1 and j == jfinal) or
+	        (i == ifinal and j == jfinal + 1) or
+	        (i == ifinal + 1 and j == jfinal + 1)
+    	end
+    	return i == ifinal and j == jfinal
+  	end
+
 	----------- uses my definition of segment (what a segment must have) --------------
 	-- DONE AND WORKING
 	local function createClosingCellSegment(x, y)
@@ -203,12 +212,16 @@
 	    	segment.type = path.fill_type
 			segment.paint = path.paint
 	    	local x, y = segment.x, segment.y
+	    	if (x[1] == 0) then x[1] = 0.01 end
+	    	if (x[#x] == 0) then x[#x] = 0.01 end
+	    	if (y[1] == 0) then y[1] = 0.01 end
+	    	if (y[#y] == 0) then y[#y] = 0.01 end
 	    	local finali, finalj = findCellCoord(x[#x], y[#y], cells)
 	    	local i, j = findCellCoord(x[1], y[1], cells)
 	    	local segment_going_up    = finalj >= j
 	    	local segment_going_right = finali >= i
 
-		   	while true do
+			while true do
 		   		if not cells[i][j].segments[path_counter] then 
 					cells[i][j].segments[path_counter] = {}
 				end	
@@ -224,9 +237,12 @@
 	    			if intersectSegmentCell(i, j+1, cells, segment) then
 	    				flag = true
 	    				print(i, j, "->", i, j+1)
+		    			cells[i][j].initialWindingNumber[path_counter] = 0
+
 			    		i, j = i, j+1
 		    			table.insert(event_list, {1, i, j, path_counter}) --increase winding number value of next cell
 		    			cells[i][j].initialWindingNumber[path_counter] = 0
+
 		    		end
 		    	elseif intersectSegmentCell(i, j-1, cells, segment) then -- leave under, decrement initial winding number  
 	    			flag = true
@@ -257,6 +273,8 @@
 		    			--leave through the left, build segment
 		    			flag = true
 		    			print(i, j, "->", i-1, j)
+		    			cells[i][j].initialWindingNumber[path_counter] = 0
+
 						i, j = i-1, j
 						if cells[i][j].ymax > y[1] then
 		    				local s = createClosingCellSegment({x[1], x[1]}, {cells[i][j].ymax, y[1]})
@@ -272,14 +290,14 @@
 			    	end
 		    	end
 		    	if not flag then 
-		    		print("errrooooooooooo")
+		    		print("errrooooooooooo", i, j, concat(segment.x, ", "))
 		    		break
 		    	end
 		    	--print("new cell", i, j)
 		    	flag = false
 	    	end
-	    end
-	        -- RETURN: VOID
+		end
+		     -- RETURN: VOID
 	end
 	
 	--DONE AND WORKING
@@ -340,7 +358,7 @@
 			x, y, path = event_list[i][2], event_list[i][3], event_list[i][4] 
 		end
 		if w ~= 0 then
-			for dx = 1, x do
+			for dx = 1, x -1 do
 				cells[dx][y].initialWindingNumber[path] = w
 				str =  str.."cell["..dx.."]["..y.."] = "..w..", "
 			end
@@ -382,7 +400,27 @@
 		print("------------------------------------")
 		-- 5) fix initial winding numbers
 		fixLineWindingNumber(cells, y_sorted_event_list)
-		scene.cells = cells
+		for i = 1, cells.width do
+		for j = 1, cells.height do
+		if cells[i] then
+			if cells[i][j] then
+		if (cells[i][j].initialWindingNumber) then
+			for l, initialWindingNumber in pairs(cells[i][j].initialWindingNumber) do
+				winding_number  = initialWindingNumber
+				print("winding number cell", i, j, winding_number)
+				local path =  cells.paths[l]
+				if cells[i][j].segments[l] then
+					for i, segment in pairs(cells[i][j].segments[l]) do
+						print(segment.x[1], segment.y[1])
+					end
+				end
+			end
+		end
+		end
+	end
+	end
+end--]]
+	scene.cells = cells
 	    -- RETURN: FILLED GRID
 	end
 

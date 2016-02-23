@@ -4,343 +4,13 @@ local chronos = require"chronos"
 
 local unpack = table.unpack
 local bezier = require("bezier")
+local util = require"util"
+local blue = require"blue"
+local significant = util.significant
 local floor, ceil, min, max, sqrt, inf = math.floor, math.ceil, math.min, math.max, math.sqrt, math.huge
 
 local _M = driver.new()
 local prepare = {}
-
--------------------------------------------------------------------------------------
-	-------------------------------- GRID FUNCTIONS -------------------------------------
-	-------------------------------------------------------------------------------------l]
-
-	-- Contains (1) the cell coordinates and (2) the initial winding number increment
-	local event_list = {}
-	local cell_size = 10
-
-	--DONE AND WORKING
-	local function fixLineWindingNumber(cells, event_list)
-		local str = ""
-		local w = event_list[#event_list][1]
-		local x, y =  event_list[#event_list][2], event_list[#event_list][3]
-		for i = #event_list -1, 1, -1 do
-			next_y = event_list[i][3]
-			if next_y == y then
-				next_x = event_list[i][2]
-			else
-				next_x = 1
-			end
-			if w ~= 0 then
-				for dx = next_x, x-1 do
-					cells[dx][y].initialWindingNumber = w
-					str = str.."["..dx.."]["..y.."].w = "..w..", "
-				end
-			else
-				--print("w=0")
-			end
-			if next_y ~= y then
-				w = event_list[i][1]
-				--print(str)
-				str = ""
-			else
-				w = w + event_list[i][1]
-			end
-			x, y = event_list[i][3], next_y
-		end
-		if w ~= 0 then
-			for dx = 1, x do
-				cells[dx][y].initialWindingNumber = w
-				str = str.."["..dx.."]["..y.."].w = "..w..", "
-			end
-			--print(str)
-		end
-		-- Loop through line changing winding number 'tilatl the net winding number is zero
-	    -- RETURN VOID
-	end
-
-	--DONE AND WORKING
-	local function computeGridDimension(scene)
-	    -- this should return a "optimal" width and height after
-	    -- We will need the viewport info about width and height
-	    -- added to render: scene.width, scene.height =  width, height
-
-	    -- Now we will make a fixed grid, with a size cell_size + extra_space
-	    -- All cells must have the same size, so..
-	    local extra_space_width = (scene.width%cell_size)/floor(scene.width/cell_size)
-	    local extra_space_height = (scene.height%cell_size)/floor(scene.height/cell_size)
-	    return cell_size+ extra_space_width , cell_size+ extra_space_height
-	end
-
-	--DONE AND WORKING
-	local function makeGrid(window_width, window_height, cell_width, cell_height)
-	    -- returns an empty grid (a bidimensional table), where each cell
-	    -- contains (1) its bounding box and (2) a table with the intersecting segments
-	    -- and the (3) initial winding number
-	    local grid_width, grid_height = window_width/cell_width, window_height/cell_height
-	    local cells = {["width"]  = cell_width, ["height"]  = cell_width}
-	    for i = 0, grid_width + 1 do
-	    	cells[i] = {}
-	    	for j = 0, grid_height + 1 do
-	    		cells[i][j] = {
-	    		["xmax"] = cell_width*(i), ["xmin"] =  cell_width*(i-1),
-    			["ymax"] = cell_height*(j), ["ymin"] = cell_height*(j-1),
-    			["initialWindingNumber"] = 0, ["segments"] = {}, ["border"] = false }
-
-    		end
-    		-- Define a border, so we can clip it when needed
-    		cells[i][0].border = true
-    		cells[i][grid_width + 1].border = true
-    	end
-    	for j = 0, grid_width + 1 do
-    		cells[0][j].border = true
-    		cells[grid_height + 1][j].border = true
-    	end
-	    -- RETURN: A TABLE WITH FORMAT CELL[i][j] = {xmin, ymin, xmax, ymax, initialWindingNumber, segments = {} }
-	    return cells
-	end
-
-	--DONE AND WORKING
-	local function findCellCoord(x, y, cells)
-		return floor(x/cells.width) + 1, floor(y/cells.height) + 1
-	end
-
-	--DONE AND WORKING
-	----------------------- uses my definition of segment and rayCastingFunction-----------------------
-	local function rayCasting(segment, xmin, xmax, ymin, ymax)
-		local rayCastingFunction = segment.foo
-		-- Tests if it intersect
-		if segment.ymax >= ymax and segment.ymin <= ymax then
-			if abs(rayCastingFunction(segment, xmin, ymin) +
-				rayCastingFunction(segment, xmax, ymin))  == 1  or
-			   abs(rayCastingFunction(segment, xmin, ymax) +
-				rayCastingFunction(segment, xmax, ymax)) == 1 then
-				return true
-			end
-		end
-		return false
-	end
-	---------------------------------------------------------------------------------------------------
-
-	---------------------- uses my definition of segment and rayCastingFunction----------------
-	--DONE AND WORKING
-	local function create_mirror_segment(segment)
-		local y, x = segment.x, segment.y
-		local new_segment = {}
-		local foo = segment.foo
-		new_segment.x, new_segment.y = x, y
-		if foo == winding_number_linear then
-			local a, b = y[2] - y[1], x[1] - x[2]
-			local c =  -(a*x[1] + b*y[1])
-			new_segment.a, new_segment.b, new_segment.c = a, b, c
-			new_segment.foo = foo
-			new_segment.xmax, new_segment.xmin,
-				new_segment.ymax, new_segment.ymin  = bounding_values(x, y)
-			return new_segment
-		end
-		if foo == winding_implicit_quadratic then
-			w = segment.w
-			if w then typ = rquadratic else typ = quadratic end
-		else -- cubic
-			typ = "cubic"
-		end
-		p = {}
-		p.k, p.segments = 0, {}
-		monotonic_segment_implicit(p, 0, foo, x, y, typ, w)
-		return p.segments[0]
-	end
-	-------------------------------------------------------------------------------------------------
-	--DONE AND WORKING FOR TESTED EXAMPLES (MAYBE WE CAN TRY TO FIND ERRORS LATER)
-	local function intersectSegmentCell(i, j, cells, segment)
-	    -- 1) Check path bounding box against Cell
-	    --      -> if it is fully inside, then return true
-	    --      -> if it is not, check if one of the extreme control points are inside the cell.
-	    ----------------------- uses my definition of segment -----------------------
-	    local x, y = segment.x, segment.y
-	    -----------------------------------------------------------------------------
-	    local i1, j1 = findCellCoord(x[1], y[1], cells)
-	    local ifinal, jfinal = findCellCoord(x[#x], y[#y], cells)
-	    -- case final or first control point is inside cell
-	    if (i1 == i and j1 == j) or (ifinal == i and jfinal == j) then
-	    	return true
-	    end
-
-	    -- 2) Ray cast
-		--> check for intersection with right side
-	    --> If it does not intersect, check for intersection with top side (by rotating the cell)
-	    local xmin, xmax, ymin, ymax = cells[i][j].xmin, cells[i][j].xmax,
-	    	cells[i][j].ymin, cells[i][j].ymax
-		if rayCasting(segment, xmin, xmax, ymin, ymax) then
-			return true
-		end
-		inv_segment = create_mirror_segment(segment)  -- Inverse ray casting
-		if rayCasting(inv_segment, ymin, ymax, xmin, xmax) then
-			return true
-		end
-		return false
-		--RETURN : BOOLEAN
-	end
-
-	--DONE AND WORKING
-	local function inside_cell(x, y, i, j, cells)
-		xi, yi = findCellCoord(x, y, cell)
-		return xi == i and yj == j
-	end
-
-	----------- uses my definition of segment (what a segment must have) --------------
-	-- DONE AND WORKING
-	local function createClosingCellSegment(x, y)
-		return {["x"] = x, ["y"] = y, ["foo"] = winding_number_linear,
-			["sign"] = -1}
-	end
-	-----------------------------------------------------------------------------------
-
-	--DONE AND WORKING
-	local function walkInPath(path, cells)
-	    -- For each segment inside the path, walk through it in a Brenseham/Tripod-fashion
-	    -- push segment into intersecting cell
-	    -- write events to event_list
-	    for l, segment in ipairs(path.segments) do
-	    	----------------------- uses my definition of segment -----------------------
-	    	local x, y = segment.x, segment.y
-	    	-----------------------------------------------------------------------------
-	    	local finali, finalj = findCellCoord(x[#x], y[#y], cells)
-	    	-- First visited cell
-	    	local i, j = findCellCoord(x[1], y[1], cells)
-	    	-- treat case we start outside viewport
-	    	message1 = "other"
-	    	--(2) Is the segment going up or down, lef or right
-	    	if (finalj >= j) then segment_going_up = true
-	    		else segment_going_up = false end
-	    	if (finali >= i) then segment_going_right = true
-	    		else segment_going_right = false end
-	    	if segment_going_up then
-		    	if segment_going_right then
-		    		message = ("This segment is going up right")
-		    	else
-		    		message = ("This segment is going up left")
-		    	end
-		    elseif segment_going_right then
-	    		message = ("This segment is going down right")
-	    	else
-    			message = ("This segment is going down left")
-    		end
-		   	while true do
-		    	table.insert(cells[i][j].segments, segment)
-		    	-- cell that contains the first control point
-	    	-- (1) pf final control point inside this cell or did we reach a border of the viewport?
-		    	if (i == finali and j == finalj) or cells[i][j].border then
-		    		break --leaves the while loop and goes to another segment
-		    	end
-		    -- (3) Test respective cells. If up: test cell[i][j+1], cell[i][j-1], cell[i+1][j];
-	    		if segment_going_up then
-	    			if intersectSegmentCell(i, j+1, cells, segment) then
-	    				flag = true
-			    	--	print("caseup")
-		    			-- leave above, increment initial winding number
-		    			table.insert(event_list, {1, i, j})
-	    				--print(i, j, "->", i, j+1)
-		    			i, j = i, j+1
-		    		end
-		    	elseif intersectSegmentCell(i, j-1, cells, segment) then -- leave under, decrement initial winding number
-	    			flag = true
-		    	--	print("casedown")
-	    			table.insert(event_list, {-1, i, j})
-	    			--print(i, j, "->", i, j-1)
-	    			i, j = i, j-1
-    			end
-    			--if not flag then
-		    		if segment_going_right then
-			    		if intersectSegmentCell(i+1, j, cells, segment) then
-				    	--	print("caseright")
-		    				flag = true
-			    			-- leave through the right, store a new closing segment if segment's end is not over the cell
-			    			if  cells[i][j].ymax > y[#y] then
-			    				local s = createClosingCellSegment(path, {x[#x], cells[i][j].ymax}, {x[#x], y[#y]})
-			    				table.insert(cells[i][j].segments, s)
-			    			end
-			    			--print(i, j, "->", i+1, j)
-		    				i, j = i+1, j
-			    		end
-			    	elseif intersectSegmentCell(i-1, j, cells, segment) then
-			    		--print("caseleft")
-		    			--leave through the left, do nothing
-		    			flag = true
-		    			--print(i, j, "->", i-1, j)
-						i, j = i-1, j
-			    	end
-		    	--end
-		    	if not flag then
-		    		print("errrooooooooooo")
-		    		break
-		    	end
-		    	--print("new cell", i, j)
-	    	end
-	    end
-	        -- RETURN: VOID
-	end
-
-	--DONE AND WORKING
-	--needs a key as well so we order this array by this particular table position
-	local function CountingSort(array, key)
-		local count = {}
-	    for j = 1, #array do
-	    	i = array[j][key]
-	    	if not count[i] then count[i] = 0 end
-	        count[i] = count[i] + 1
-	    end
-	    local total = 1
-		for i  = 1, #array do
-			if not count[i] then count[i] = 0 end
-		    local oldCount = count[i]
-		    count[i] = total
-		    total = total + oldCount
-		end
-		local output = {}
-		for i, x in pairs(array) do
-		    output[count[x[key]]] = x
-		    count[x[key]] = count[x[key]] + 1
-		end
-		return output
-	end
-
-	--DONE AND WORKING
-	local function prepareGrid(scene)
-	    -- 1) Compute grid dimensions
-	    local cell_width, cell_height = computeGridDimension(scene)
-	    -- 2) Create grid
-		cells = makeGrid(scene.width, scene.height, cell_width, cell_height)
-	    -- 3) loop through paths inside scene
-		-- insert here yout respective sample loop
-		for i, e in ipairs(scene.inverse_shapes_list) do
-			if e.shape.type == "path" then
-				print("enter path")
-				walkInPath(e.shape, cells)
-			else
-				-- we have to think about it
-				-- maybe a function walkInCircle/Triangle/Polygon or segment them
-			end
-		end
-	    -- 4) Sort event_list -> insertion_sort (or any other stable sort)
-		local x_sorted_event_list = CountingSort(event_list, 2) -- (sort by x line)
-		local y_sorted_event_list = CountingSort(event_list, 3) -- (sort by x line)
-		--[[for i in pairs(y_sorted_event_list) do
-			print(i, y_sorted_event_list[i][1], y_sorted_event_list[i][2], y_sorted_event_list[i][3] )
-		end--]]
-
-		-- 5) fix initial winding numbers
-		fixLineWindingNumber(cells, y_sorted_event_list)
-	    -- RETURN: FILLED GRID
-	end
-
-
-	--TODO
-	local function export_cell(i,j,cell)
-	    -- 4) compose scene
-	    -- 5) Export svg
-
-	    -- RETURN: VOID, but exports a .svg file
-	end
-
-
 
 ---------------------- shortcut operations--------------------------------------
 local function sign(x) return (x<0 and -1) or 1 end
@@ -357,6 +27,29 @@ local function truncate_parameter(t)
     return t
 end
 
+local function prod_biP(p,q) -- This is simple product (ax + by + c)*(dx + ey + f)
+  local c,b,a = unpack(p)
+  local f,e,d = unpack(q)
+  return {c*f, a*f + c*d, b*f + c*e, a*e + b*d, a*d, b*e}
+end
+
+local function prod_biP_2(p,q)
+  local c,b,a = unpack(p)
+  local i,g,h,f,d,e = unpack(q)
+  return {c*i, a*i + c*g, b*i + c*h, a*h + b*g + c*f, a*g + c*d, b*h + c*e, a*f + b*d, b*f + a*e, a*d, b*e}
+end
+
+function colinear(x, y)
+  if (not x[4]) then
+    return (x[1]*(y[2]- y[3]) + x[2]*(y[3] - y[1]) + x[3]*(y[1] - y[2]) == 0)
+  else
+    return
+    (x[1]*(y[2]- y[3]) + x[2]*(y[3] - y[1]) + x[3]*(y[1] - y[2]) == 0) and
+    (x[4]*(y[2]- y[3]) + x[2]*(y[3] - y[4]) + x[3]*(y[4] - y[2]) == 0)
+  end
+end
+
+---------------------------Auxiliarie functions---------------------------------
 -- I use this to transform and add to the bounding box m points
 local function dataTransform(shape,data,pos,m)
   for i=0,(m-1) do
@@ -369,7 +62,6 @@ local function dataTransform(shape,data,pos,m)
   return data
 end
 
----------------------------Auxiliarie functions---------------------------------
 local function blend(f,b)
   return {f[4]*f[1]+(1-f[4])*b[4]*b[1],f[4]*f[2]+(1-f[4])*b[4]*b[2],f[4]*f[3]+(1-f[4])*b[4]*b[3],f[4]+(1-f[4])*b[4]}
 end
@@ -380,9 +72,16 @@ local function cross_with_e1(v1, v2, v3)
   return -d*f + c*g,d*e - b*g,-c*e + b*f
 end
 
-local function bezier_to_poly3(x0,y0,x1,y1,x2,y2,x3,y3)
-  return {x0, -3*x0 + 3*x1, 3*x0 - 6*x1 + 3*x2, -x0 + 3*x1 - 3*x2 + x3},
-         {y0, -3*y0 + 3*y1, 3*y0 - 6*y1 + 3*y2, -y0 + 3*y1 - 3*y2 + y3}
+local function bezier_to_poly3(x,y)
+  return {x[1], -3*x[1] + 3*x[2], 3*x[1] - 6*x[2] + 3*x[3], -x[1] + 3*x[2] - 3*x[3] + x[4]},
+         {y[1], -3*y[1] + 3*y[2], 3*y[1] - 6*y[2] + 3*y[3], -y[1] + 3*y[2] - 3*y[3] + y[4]}
+end
+
+local function bezier_to_poly2(x,y,w)
+  local w = w or 1
+  return {x[1], 2*(x[2]-x[1]), x[1] - 2*x[2] + x[3]},
+         {y[1], 2*(y[2]-y[1]), y[1] - 2*y[2] + y[3]},
+         { 1,   2*w - 2,        2 - 2*w}
 end
 
 local function difP(p)
@@ -417,7 +116,20 @@ local function compute_rational_maxima(x0, x1, x2, w)
     return out1, out2
 end
 
-local bezier_cut = {0,bezier.cut2,bezier.cut3}
+local bezier_cut = {0,
+  function(a,b,x,y)
+    u0, v0, u1, v1, u2, v2 = bezier.cut2(a, b, x[1], y[1], x[2], y[2], x[3], y[3])
+    return {u0,u1,u2}, {v0,v1,v2}
+  end,
+  function(a,b,x,y)
+    u0, v0, u1, v1, u2, v2, u3, v3 = bezier.cut3(a, b, x[1], y[1], x[2], y[2], x[3], y[3], x[4], y[4])
+    return {u0,u1,u2,u3}, {v0,v1,v2,v3}
+  end,
+  r = function(a,b,x,y,w)
+    u0, v0, u1, v1, r, u2, v2 = bezier.cut2rc(a, b, x[1], y[1], x[2], y[2], w, x[3], y[3])
+    return {u0,u1,u2}, {v0,v1,v2}, r
+  end
+}
 
 local function polyToFun(p)
   return function (t)
@@ -494,7 +206,7 @@ end
 
 roots = {
   function (p) --degree 1
-    if p[2] then return -p[1]/p[2] end
+    if p[2] then return {-p[1]/p[2]} end
   end,
   function (p) --degree 2
     local n,t1,s1,t2,s2 = _M.quadratic(p[3],p[2],p[1])
@@ -533,6 +245,47 @@ local function inside(shape,x,y)
   return x >= shape.xmin and x <= shape.xmax and y >= shape.ymin and y <= shape.ymax
 end
 
+local partition = {0,
+  function(x,y)
+      local partition = {0,1}
+      partition[3] = truncate_parameter( (x[1]-x[2]) / (x[1] - 2*x[2] + x[3]) )
+      partition[4] = truncate_parameter( (y[1]-y[2]) / (y[1] - 2*y[2] + y[3]) )
+      table.sort( partition )
+      return partition
+  end,
+  function(x,y,d2,d3,d4,px,py)
+    local partition = {0,1}
+    local p = {-d4, 3*d3, -3*d2}
+    local q = {d3^2 - d2*d4, - d2*d3, d2^2}
+    local inflections, doublePts = roots[2](p), roots[2](q)
+    local P = multP(difP(px),difP(py))
+    local monotone_partition = roots[min(#P-1,4)](P,0,1)
+    for i,e in ipairs(inflections) do partition[#partition+1] = truncate_parameter(e) end
+    for i,e in ipairs(doublePts) do partition[#partition+1] = truncate_parameter(e) end
+    for i,e in ipairs(monotone_partition) do partition[#partition+1] = truncate_parameter(e) end
+    table.sort( partition )
+    return partition
+  end,
+  r = function(x,y,w)
+    -- Find maxima
+    t = {}
+    t[1], t[6] = 0, 1
+    t[2], t[3] = compute_rational_maxima(x[1], x[2], x[3], w)
+    t[4], t[5] = compute_rational_maxima(y[1], y[2], y[3], w)
+    table.sort( t )
+    return t
+  end
+}
+
+local function intersectLine(l1,l2)
+  local a1,b1,a2,b2 = l1[4]-l1[2], l1[1]-l1[3], l2[4]-l2[2], l2[1]-l2[3]
+  local c1,c2,s1,s2 = -(a1*l1[1] + b1*l1[2]), -(a2*l2[1] + b2*l2[2]), sign(a1), sign(a2)
+  local A = _M.xform(a1,b1,c1,a2,b2,c2,0,0,1)
+  if not significant(a1*b2-b1*a2) then return l1[1],l1[2] end
+  A = A.inverse(A)
+  return A.apply(A,0,0,1)
+end
+
 -------------------------------Winding Number-----------------------------------
 local winding = {}
 
@@ -542,6 +295,39 @@ function winding.line(c,x,y)
   else return 0 end
 end
 
+function winding.quadratic(c,x,y)
+  if y > c.ymin and y <= c.ymax then
+    if c.l(x,y) <= 0 then
+      if c.sl > 0 then return c.s
+      elseif c.R(x,y)*c.sR > 0 then return c.s
+      end
+    else
+      if c.sl > 0 and c.R(x,y)*c.sR < 0 then
+        return c.s
+      end
+    end
+  end
+  return 0
+end
+
+function winding.cubic(c,x,y)
+  if y > c.ymin and y <= c.ymax then
+    if c.l(x,y) <= 0 then
+      if c.sl > 0 then return c.s
+      else
+        if c.sT2*c.l2(x,y) > 0 and c.sT3*c.l3(x,y) > 0 then
+          if c.R(x,y)*c.sR > 0 then return c.s end
+        else return c.s
+        end
+      end
+    else
+      if c.sl > 0 and c.sT2*c.l2(x,y) >= 0 and c.sT3*c.l3(x,y) >= 0 then
+        if c.R(x,y)*c.sR < 0 then return c.s end
+      end
+    end
+  end
+  return 0
+end
 
 local function windingNumber (path,x,y)
   local wN = 0
@@ -560,6 +346,44 @@ local implicitEq = {
     local c, s = -(a*x0 + b*y0), sign(a)
     local p = {0,0,s*c,0,1,s*b,1,0,s*a}
     return biP_to_fun(p), s
+  end,
+  function (x_,y_,w_)
+    local x, y, w = bezier_to_poly2(x_,y_,w_)
+    -- This comes from the notation f10 = f1*g0 - f0*g1 used when calculating the Cailey Bézout matrix
+    local f10 = {x[2]*y[1] - x[1]*y[2], w[2]*x[1] - w[1]*x[2], w[1]*y[2] - w[2]*y[1]}
+    local f20 = {x[3]*y[1] - x[1]*y[3], w[3]*x[1] - w[1]*x[3], w[1]*y[3] - w[3]*y[1]}
+    local f21 = {x[3]*y[2] - x[2]*y[3], w[3]*x[2] - w[2]*x[3], w[2]*y[3] - w[3]*y[2]}
+
+    local p = prod_biP(f10,f21)
+    local q = prod_biP(f20,f20)
+    local R = {0,0,p[1]-q[1],1,0,p[2]-q[2],0,1,p[3]-q[3],1,1,p[4]-q[4],2,0,p[5]-q[5],0,2,p[6]-q[6]}
+    return biP_to_fun(R)
+  end,
+  function (x_,y_)
+    local x, y = bezier_to_poly3(x_,y_)
+    local f10 = {x[2]*y[1] - x[1]*y[2], - x[2], y[2]}
+    local f20 = {x[3]*y[1] - x[1]*y[3], - x[3], y[3]}
+    local f30 = {x[4]*y[1] - x[1]*y[4], - x[4], y[4]}
+    local f21, f31, f32 = x[3]*y[2] - x[2]*y[3], x[4]*y[2] - x[2]*y[4], x[4]*y[3] - x[3]*y[4]
+
+    local p1 = prod_biP(f20,f30)
+    local p2 = prod_biP(f20,f20)
+    local p3 = prod_biP(f30,f30)
+    f30[1] = f30[1] + f21
+    local p4 = prod_biP(f10,f30)
+    local p5 = prod_biP_2(f30,p3)
+
+    local R = {0,0, f32*p4[1] + 2*f31*p1[1] - p5[1] - (f31^2)*f10[1] - f32*p2[1],
+               1,0, f32*p4[2] + 2*f31*p1[2] - p5[2] - (f31^2)*f10[3] - f32*p2[2],
+               0,1, f32*p4[3] + 2*f31*p1[3] - p5[3] - (f31^2)*f10[2] - f32*p2[3],
+               1,1, f32*p4[4] + 2*f31*p1[4] - p5[4] - f32*p2[4],
+               2,0, f32*p4[5] + 2*f31*p1[5] - p5[5] - f32*p2[5],
+               0,2, f32*p4[6] + 2*f31*p1[6] - p5[6] - f32*p2[6],
+               2,1, -p5[7],
+               1,2, -p5[8],
+               3,0, -p5[9],
+               0,3, -p5[10]}
+    return biP_to_fun(R)
   end
 }
 
@@ -567,8 +391,248 @@ local implicit = {
   function (x0,y0,x1,y1)
     local l,s = implicitEq[1](x0,y0,x1,y1)
     return {x = {x0,x1}, y = {y0,y1}, ymin = min(y0,y1), ymax = max(y0,y1), l = l, s = s, type = "line"}
+  end,
+  function (x,y,w)
+    local w = w or 1
+    local l,s = implicitEq[1](x[1],y[1],x[3],y[3])
+    local R = implicitEq[2](x,y,w)
+    local invW = 1./w
+    local x2, y2 = x[2]*invW, y[2]*invW
+    local sR, sl = sign(R(x2,y2)), sign(l(x2,y2))
+    return {x = x, y = y, ymin = min(y[1],y[3]), ymax = max(y[1],y[3]),
+            R = R, l = l, s = s, sR = sR, sl = sl, type = "quadratic"}
+  end,
+  function (x,y)
+    local l,s = implicitEq[1](x[1],y[1],x[4],y[4])
+    local R = implicitEq[3](x,y)
+    if x[1]==x[2] and x[1]==x[3] and y[1]==y[2] and y[1]==y[3] then x[2],y[2],x[3],y[3] = x[4],y[4],x[4],y[4]
+    elseif x[1]==x[2] and y[1]==y[2] then x[2],y[2] = x[3],y[3]
+    elseif x[4]==x[3] and y[4]==y[3] then x[3],y[3] = x[2],y[2] end
+
+    local l2 = implicitEq[1](x[1],y[1],x[2],y[2])
+    local l3 = implicitEq[1](x[3],y[3],x[4],y[4])
+    local xT,yT = intersectLine({x[1],y[1],x[2],y[2]},{x[3],y[3],x[4],y[4]})
+    local sR,sl,sT2,sT3 = sign(R(xT,yT)), sign(l(xT,yT)), sign(l2(x[4],y[4])), sign(l3(x[1],y[1]))
+
+    return {x = x, y = y, ymin = min(y[1],y[4]), ymax = max(y[1],y[4]), R = R, l = l, l2 = l2, l3 = l3,
+            s = s, sT2 = sT2, sT3 = sT3, sR = sR, sl = sl, type = "cubic"}
   end
 }
+
+
+-- prepare grid
+-------------------------------------------------------------------------------------
+	-------------------------------- GRID FUNCTIONS -------------------------------------
+	-------------------------------------------------------------------------------------l]
+
+	-- Contains (1) the cell coordinates and (2) the initial winding number increment
+	local cell_size = 10
+
+	--DONE AND WORKING
+	local function computeGridDimension(scene)
+	    -- this should return a "optimal" width and height after
+	    -- We will need the viewport info about width and height
+	    -- added to render: scene.width, scene.height =  width, height
+
+	    -- Now we will make a fixed grid, with a size cell_size + extra_space
+	    -- All cells must have the same size, so..
+      -- The old calculation is equivalent to this:
+	    return floor(scene.height/cell_size), floor(scene.width/cell_size)
+	end
+
+	--DONE AND WORKING
+	local function findCellCoord(x, y, grid) -- 0 and >n will mean out of the grid
+    return floor(grid.n*y*(1/grid.height) + 1), floor(grid.m*x*(1/grid.width) + 1)
+	end
+
+	-----------------------------------------------------------------------------------
+  local function insideGrid(i,j,m,n) -- Will try to use this later
+    return  (i > 0 and j > 0 and i < n+1 and j < m+1)
+  end
+
+  local function alocate_and_insert(grid,i,j,i_path,segment)
+    grid[i] = grid[i] or {}
+    if grid[i][j] then
+      if grid[i][j].order[#grid[i][j].order] ~= i_path then table.insert(grid[i][j].order, i_path) end
+    else grid[i][j] = {order = {i_path}} end
+
+    grid[i][j][i_path] = grid[i][j][i_path] or {initialWindingNumber = 0, segments = {}}
+    table.insert(grid[i][j][i_path].segments, segment)
+  end
+
+  local function alocate_and_add_winding(grid,i,j,i_path,s)
+    grid[i] = grid[i] or {}
+    if grid[i][j] then
+      if grid[i][j].order[#grid[i][j].order] ~= i_path then table.insert(grid[i][j].order, i_path) end
+    else grid[i][j] = {order = {i_path}} end
+
+    grid[i][j][i_path] = grid[i][j][i_path] or {initialWindingNumber = 0, segments = {}}
+    grid[i][j][i_path].initialWindingNumber = grid[i][j][i_path].initialWindingNumber + s
+  end
+
+	--DONE AND WORKING
+	local function walkInPath(grid, segments, i_path)
+    local event_list = {}
+	  for l, segment in ipairs(segments) do
+	    local x, y = segment.x, segment.y
+      local n, m = grid.n, grid.m
+	    local begi, begj = findCellCoord(x[1], y[1], grid)
+      local finali, finalj = findCellCoord(x[#x], y[#y], grid)
+      local segment_going_up = (finali >= begi)
+      local segment_going_right = (finalj >= begj)
+      local i, j = begi, begj
+
+      while true do
+        alocate_and_insert(grid,i,j,i_path,segment)
+	    	-- (1) pf final control point inside this cell or did we reach a border of the viewport?
+		    if (i == finali and j == finalj) then--or cells[i][j].border then
+		    	break --leaves the while loop and goes to another segment
+		    end
+		    -- (3) Test respective cells. If up: test cell[i+1][j], cell[i][j+1], cell[i][j-1];
+        local xmin, xmax =  (j-1)*grid.cell_width, j*grid.cell_width
+  	    local ymin, ymax = (i-1)*grid.cell_height, i*grid.cell_height
+        local w_up_left, w_up_right, w_down_left, w_down_right = 0, 0, 0, 0
+	    	if segment_going_up then
+          w_up_left  = winding[segment.type](segment,xmin,ymax)
+          w_up_right = winding[segment.type](segment,xmax,ymax)
+          if (w_up_left ~= 0 and w_up_right == 0) or (w_up_right ~= 0 and w_up_left == 0) then--if go up
+	    		--if intersectSegmentCell(i, j+1, grid, segment) then ----This function does too much
+            -- alocate_and_add_winding(grid,i+1,j,i_path,1)
+		    		i = i+1
+            event_list[#event_list+1] = {1,i,j}
+          elseif segment_going_right then -- if go right
+            if x[#x] > xmax then
+	    			  j = j+1
+              if (i == finali and j == finalj) then
+                if segments[l+1].s > 0 then
+                  alocate_and_insert(grid,i,j-1,i_path,implicit[1](x[#x],y[#y],x[#x],ymax)) --insert line going up
+                else
+                  alocate_and_insert(grid,i,j-1,i_path,implicit[1](x[#x],ymax,x[#x],y[#y])) --insert line going down
+                end
+              end
+            else break end
+    			else                            -- if go left
+            if x[#x] < xmin then
+              if (i == begi and j == begj) and ymin ~= y[1] then
+                alocate_and_insert(grid,i,j-1,i_path,implicit[1](x[1],ymax,x[1],y[1])) --insert line going down
+              end
+              j = j-1
+            else break end
+          end
+        else
+          w_down_left =  winding[segment.type](segment,xmin,ymin)
+          w_down_right = winding[segment.type](segment,xmax,ymin)
+          if (w_down_left ~= 0 and w_down_right == 0) or (w_down_right ~= 0 and w_down_left == 0) or ymin == y[1] then--if go down
+            -- alocate_and_add_winding(grid,i,j,i_path,-1)
+            event_list[#event_list+1] = {-1,i,j}
+            i = i-1
+          elseif segment_going_right then -- if go right
+            if x[#x] > xmax then
+	    			  j = j+1
+              if (i == finali and j == finalj) then
+                if segments[l+1].s > 0 then
+                  alocate_and_insert(grid,i,j-1,i_path,implicit[1](x[#x],y[#y],x[#x],ymax)) --insert line going up
+                else
+                  alocate_and_insert(grid,i,j-1,i_path,implicit[1](x[#x],ymax,x[#x],y[#y])) --insert line going down
+                end
+              end
+            else break end
+    			else                            -- if go left
+            if x[#x] < xmin then
+              if (i == begi and j == begj) and ymin ~= y[1] then
+                alocate_and_insert(grid,i,j-1,i_path,implicit[1](x[1],y[1],x[1],ymax)) --insert line going down
+              end
+              j = j-1
+            else break end
+          end
+        end
+      end
+    end
+    return event_list
+	        -- RETURN: VOID
+	end
+
+	--DONE AND WORKING
+	--needs a key as well so we order this array by this particular table position
+	local function CountingSort(array, key)
+		local count = {}
+    local ind = {}
+	  for j = 1, #array do
+	  	i = array[j][key]
+      ind[#ind+1] = i
+	  	if not count[i] then count[i] = 0 end
+	    count[i] = count[i] + 1
+	  end
+	  local total = 1
+    local maxim = max(unpack(ind))
+		for i = 1,maxim do
+			if not count[i] then count[i] = 0 end
+		  local oldCount = count[i]
+		  count[i] = total
+		  total = total + oldCount
+		end
+		local output = {}
+		for i, x in pairs(array) do
+		    output[count[x[key]]] = x
+		    count[x[key]] = count[x[key]] + 1
+		end
+		return output
+	end
+
+  local function running_sum(grid, list, i_path)
+    for k = #list,2,-1 do
+      local wN,i,j = unpack(list[k])
+      local cell = grid[i][j]
+        for l = j-1,list[k-1][3],-1 do
+          alocate_and_add_winding(grid,i,l,i_path,wN)
+        end
+    end
+  end
+
+	--DONE AND WORKING
+	function prepare.grid(scene)
+	    -- 1) Compute grid dimensions
+    scene.grid = {}
+	  scene.grid.n, scene.grid.m = computeGridDimension(scene) --n x m grid
+    scene.grid.cell_width, scene.grid.cell_height = scene.width/scene.grid.n, scene.height/scene.grid.m
+    scene.grid.width, scene.grid.height = scene.width, scene.height --This could've been passed directly
+	    -- 2) Create grid
+		-- local cells = makeGrid(scene.width, scene.height, n, m)
+	    -- 3) loop through paths inside scene
+		-- insert here yout respective sample loop
+		for i, e in ipairs(scene.elements) do
+			local event_list = walkInPath(scene.grid, e.shape.segments, i)
+
+      local y_order = CountingSort(event_list, 2) -- (sort by y line)
+      local x_order = {y_order[1]}
+      -- for i,e in ipairs(y_order) do print(e[1],e[2],e[3]) end
+      for ind=2,#y_order do
+        local ind_order = {}
+        if y_order[ind][2]==x_order[1][2] then
+          x_order[#x_order+1] = y_order[ind]
+        else
+          x_order = CountingSort(x_order,3)
+          -- for i,e in ipairs(y_order) do print(e[1],e[2],e[3]) end
+          running_sum(scene.grid,x_order,i)
+          x_order = {y_order[ind]}
+        end
+      end
+		end
+    -- for i,e in pairs(scene.grid) do
+    --   if type(e) == "table" then
+    --     print(i)
+    --     for j,f in pairs(e) do
+    --       print(j)
+    --       for o,i_path in ipairs(f.order) do
+    --         print(o,i_path)
+    --       end
+    --     end
+    --   end
+    -- end
+	    -- 4) Sort event_list -> insertion_sort (or any other stable sort)
+	end
+
+
 
 
 -- prepare paths
@@ -604,20 +668,19 @@ end
 function execute.quadratic_segment(shape)
   local data, pos = shape.data, shape.pos
   dataTransform(shape,data,pos+2,2)
-  local x0, y0 = data[pos], data[pos+1]
-  local x1, y1 = data[pos+2], data[pos+3]
-  local x2, y2 = data[pos+4], data[pos+5]
+  local x = {  data[pos], data[pos+2], data[pos+4]}
+  local y = {data[pos+1], data[pos+3], data[pos+5]}
 
-  local partition, v = {}, 1./(x0 - 2*x1 + x2)
-  partition[1], partition[4] = 0, 1
-  partition[2] = truncate_parameter( (x0-x1) * v )
-  partition[3] = truncate_parameter( (y0-y1) * v )
-  table.sort( partition )
+  if colinear(x,y) then --If it degenerates to a line
+    shape.segments[#shape.segments+1] = implicit[1](x[1],y[1],x[3],y[3])
+    return shape
+  end
 
+  local S = partition[2](x,y)
   for i = 2, 4 do
-      if partition[i-1] ~= partition[i] then
-          u0, v0, u1, v1, u2, v2 = bezier_cut[2](partition[i-1], partition[i], x0, y0, x1, y1, x2, y2)
-          shape.segments[#shape.segments+1] = implicit[2](u0, v0, u1, v1, u2, v2)
+      if S[i-1] ~= S[i] then
+        local x_, y_ = bezier_cut[2](S[i-1], S[i], x, y)
+        shape.segments[#shape.segments+1] = implicit[2](x_,y_)
       end
   end
 end
@@ -626,44 +689,31 @@ function execute.cubic_segment(shape)
   local data, pos = shape.data, shape.pos
   dataTransform(shape,data,pos+2,3)
 
-  --Finding inflections and double points
-  local x0, y0 = data[pos], data[pos+1]
-  local x1, y1 = data[pos+2], data[pos+3]
-  local x2, y2 = data[pos+4], data[pos+5]
-  local x3, y3 = data[pos+6], data[pos+7]
+  local x = {  data[pos], data[pos+2], data[pos+4], data[pos+6]}
+  local y = {data[pos+1], data[pos+3], data[pos+5], data[pos+7]}
 
-  local px, py = bezier_to_poly3(x0,y0,x1,y1,x2,y2,x3,y3)
+  --Finding inflections and double points
+  local px, py = bezier_to_poly3(x,y)
   local d2,d3,d4 = cross_with_e1(px,py)
 
-  local partition, degree = {0,1}, 3
+  local degree = 3
   if d2==0 and d3==0 then
     if d4==0 then--Case it degenerates to a straight line
-      shape.segments[#shape.segments+1] = implicit[1](x0,y0,x3,y3)
+      shape.segments[#shape.segments+1] = implicit[1](x[1],y[1],x[4],y[4])
       return shape
     else --Case it degenerates to a quadratic
       degree = 2
-      local xaux = (3/2)*(x1 - x0) + x0
-			local yaux = (3/2)*(y1 - y0) + y0
-      local w = 1./(x0 - 2*xaux + x2)
-      partition[3] = truncate_parameter( (x0-xaux) * w )
-      partition[4] = truncate_parameter( (y0-yaux) * w )
+      local xaux = (3/2)*(x[2] - x[1]) + x[1]
+			local yaux = (3/2)*(y[2] - y[1]) + y[1]
+      x[2],y[2],x[3],y[3] = xaux,yaux,x[4],y[4]
     end
-  else
-    local p = {-d4, 3*d3, -3*d2}
-    local q = {d3^2 - d2*d4, - d2*d3, d2^2}
-    local inflections, doublePts = roots[2](p), roots[2](q)
-    local P = multP(difP(px),difP(py))
-    local monotone_partition = roots[min(#P-1,4)](P,0,1)
-    for i,e in ipairs(inflections) do partition[#partition+1] = truncate_parameter(e) end
-    for i,e in ipairs(doublePts) do partition[#partition+1] = truncate_parameter(e) end
-    for i,e in ipairs(monotone_partition) do partition[#partition+1] = truncate_parameter(e) end
   end
-  table.sort(partition)
 
-  for i = 2, #partition do
-      if partition[i-1] ~= partition[i] then
-        local u0, v0, u1, v1, u2, v2, u3, v3 = bezier_cut[degree](partition[i-1], partition[i], x0, y0, x1, y1, x2, y2, x3, y3)
-        shape.segments[#shape.segments+1] = implicit[degree](u0, v0, u1, v1, u2, v2, u3, v3)
+  local S = partition[degree](x,y,d2,d3,d4,px,py)
+  for i = 2, #S do
+      if S[i-1] ~= S[i] then
+        local x_,y_ = bezier_cut[degree](S[i-1], S[i], x, y)
+        shape.segments[#shape.segments+1] = implicit[degree](x_,y_)
       end
   end
 end
@@ -673,26 +723,27 @@ function execute.rational_quadratic_segment(shape)
   data[pos+2], data[pos+3], data[pos+4] = shape.xf : apply(data[pos+2], data[pos+3], data[pos+4])
   data[pos+5], data[pos+6] = shape.xf : apply(data[pos+5], data[pos+6])
 
-  local x0, y0 = data[pos], data[pos+1]
-  local x1, x1, w = data[pos+2], data[pos+3], data[pos+4]
-  local x2, y2 = data[pos+5], data[pos+6]
+  local x = {  data[pos], data[pos+2], data[pos+5]}
+  local y = {data[pos+1], data[pos+3], data[pos+6]}
+  local w = data[pos+4]
   local invW = 1./w
-  shape.xmin = min(shape.xmin, x0, x1*invW, x2)
-  shape.ymin = min(shape.ymin, y0, y1*invW, y2)
-  shape.xmax = max(shape.xmax, x0, x1*invW, x2)
-  shape.ymax = max(shape.ymax, y0, y1*invW, y2)
+  local x_p = {x[1], x[2]*invW, x[3]}
+  local y_p = {y[1], y[2]*invW, y[3]}
+  shape.xmin = min(shape.xmin, unpack(x_p))
+  shape.ymin = min(shape.ymin, unpack(y_p))
+  shape.xmax = max(shape.xmax, unpack(x_p))
+  shape.ymax = max(shape.ymax, unpack(y_p))
 
-  -- Find maxima
-  t = {}
-  t[1], t[6] = 0, 1
-  t[2], t[3] = compute_rational_maxima(x0, x1, x2, w)
-  t[4], t[5] = compute_rational_maxima(y0, y1, y2, w)
-  table.sort( t )
+  if colinear(x_p,y_p) then --If it degenerates to a line
+    shape.segments[#shape.segments+1] = implicit[1](x[1],y[1],x[3],y[3])
+    return shape
+  end
 
+  local S = partition["r"](x,y,w)
   for i = 2, 6 do
-      if t[i-1] ~= t[i] then
-          local u0, v0, u1, v1, r, u2, v2 = bezier.cut2rc(t[i-1], t[i], x0, y0, x1, y1, w, x2, y2)
-          shape.segments[#shape.segments+1] = implicit[d](u0, v0, u1, v1, u2, v2, r)
+      if S[i-1] ~= S[i] then
+          local x_, y_, w_ = bezier_cut["r"](S[i-1], S[i], x, y, w)
+          shape.segments[#shape.segments+1] = implicit[2](x_,y_,w_)
       end
   end
 end
@@ -705,6 +756,7 @@ function prepare.path(shape)
     shape.pos = shape.offsets[j]
     execute[instruction](shape)
   end
+  return shape
 end
 
 -- prepare for simple paths
@@ -723,38 +775,23 @@ function prepare.polygon(shape)
     shape.segments[#shape.segments+1] = implicit[1](D[i],D[i+1],D[i+2],D[i+3])
   end
   shape.segments[#shape.segments+1] = implicit[1](D[n-1],D[n],D[1],D[2])
+  return shape
 end
 
 function prepare.circle(shape)
   -- it is formed by 4 arcs covering each quarter of the unit circle (Using Four Vertex Theorem[Manfredo C.] )
   local s = sqrt(2)/2          -- sin(pi/2)
-  local cx, cy, r = shape.cx, shape.cy, shape.r
-  local arc1 = shape.xf * _M.xform(-r+cx,-r*s+cx,   cx,
-                                      cy, r*s+cy, r+cy,
-                                      1,      s,    1)
-  local arc2 = shape.xf * _M.xform( cx, r*s+cx, r+cx,
-                                    r+cy, r*s+cy,   cy,
-                                       1,      s,    1)
-  local arc3 = shape.xf * _M.xform( r+cx, r*s+cx,   cx,
-                                      cy,-r*s+cy,-r+cy,
-                                       1,      s,    1)
-  local arc4 = shape.xf * _M.xform(   cx,-r*s+cx,-r+cx,
-                                   -r+cy,-r*s+cy,   cy,
-                                       1,      s,    1)
-  local x = {arc1[1],arc1[2]/arc1[8],arc1[3],
-             arc2[1],arc2[2]/arc2[8],arc2[3],
-             arc1[1],arc3[2]/arc3[8],arc3[3],
-             arc1[1],arc4[2]/arc4[8],arc4[3]}
-  local y = {arc1[4],arc1[2]/arc1[8],arc1[3],
-             arc2[4],arc2[2]/arc2[8],arc2[3],
-             arc1[4],arc3[5]/arc3[8],arc3[3],
-             arc1[4],arc4[5]/arc4[8],arc4[3]}
-  shape.xmin = min(unpack(x))
-  shape.xmax = max(unpack(x))
-  shape.ymin = min(unpack(y))
-  shape.ymax = max(unpack(y))
-
-  shape.segments = {implicit[2](arc1),implicit[2](arc2),implicit[2](arc3),implicit[2](arc4)}
+  local cx, cy, r, xf = shape.cx, shape.cy, shape.r, shape.xf
+  shape = _M.path{
+      _M.M,  1,  0,
+      _M.R,  s,  s,  s, 0, 1,
+      _M.R, -s,  s,  s,-1, 0,
+      _M.R, -s, -s,  s, 0,-1,
+      _M.R,  s, -s,  s, 1, 0,		-- colocar em baixo os parametros do circulo
+      _M.Z}:scale(r, r):translate(cx, cy)
+  shape.xf = xf*shape.xf
+  -- for i,e in pairs(shape.xf) do print(i,e) end
+  return prepare.path(shape)
 end
 --------------------------------------------------------------------------------
 --------------------------Preparing Paint---------------------------------------
@@ -775,25 +812,30 @@ end
 local function preparescene(scene)
   for i, element in ipairs(scene.elements) do
     element.shape.xf = scene.xf * element.shape.xf
-    prepare[element.shape.type](element.shape)
+    element.shape = prepare[element.shape.type](element.shape)
     element.paint.xf = element.paint.xf:inverse() * scene.xf:inverse()
     prepare[element.paint.type](element.paint)
   end
-  -- prepare.grid(scene)
+  prepare.grid(scene)
   return scene
 end
 
 -- sample scene at x,y and return r,g,b,a
 local function sample(scene, x, y)
   local color = {1,1,1,1}
-  for ind,e in ipairs(scene.elements) do
-    local shape, paint = e.shape, e.paint
-    if inside(shape,x,y) then
-      local wN = windingNumber(shape.segments,x,y)
-      if e.type == "fill" and wN ~= 0 then
-        color = blend(paint:color(x,y),color)
-      elseif e.type == "eofill" and wN % 2 == 1 then
-        color = blend(paint:color(x,y),color)
+  local k,l = findCellCoord(x,y,scene.grid)
+  if scene.grid[k] == nil then return unpack(color,1,4) end
+  if scene.grid[k][l] then
+    for ind,i in ipairs(scene.grid[k][l].order) do
+      local cell = scene.grid[k][l][i]
+      local shape, paint = scene.elements[i].shape, scene.elements[i].paint
+      if inside(shape,x,y) then
+        local wN = cell.initialWindingNumber + windingNumber(cell.segments,x,y)
+        if scene.elements[i].type == "fill" and wN ~= 0 then
+          color = blend(paint:color(x,y),color)
+        elseif scene.elements[i].type == "eofill" and wN % 2 == 1 then
+          color = blend(paint:color(x,y),color)
+        end
       end
     end
   end

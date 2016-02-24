@@ -52,9 +52,7 @@
 	-------------------------------------------------------------------------------------l]
 
 	-- Contains (1) the cell coordinates and (2) the initial winding number increment
-	local event_list = {}
-	local cell_size = 10
-
+	local cell_size = 100
 	--DONE AND WORKING
 	local function computeGridDimension(scene)
 	    -- this should return a "optimal" width and height after
@@ -65,7 +63,8 @@
 	    -- All cells must have the same size, so..
 	    local extra_space_width = (scene.width%cell_size)/floor(scene.width/cell_size)
 	    local extra_space_height = (scene.height%cell_size)/floor(scene.height/cell_size)
-	    return cell_size+ extra_space_width , cell_size+ extra_space_height
+
+	    return cell_size + extra_space_width , cell_size+ extra_space_height
 	end
 
 	--DONE AND WORKING
@@ -73,8 +72,9 @@
 	    -- returns an empty grid (a bidimensional table), where each cell 
 	    -- contains (1) its bounding box and (2) a table with the intersecting segments
 	    -- and the (3) initial winding number
-	    local grid_width, grid_height = floor(window_width/cell_width), floor(window_height/cell_height)
+	    local grid_width, grid_height = ceil(window_width/cell_width), ceil(window_height/cell_height)
 	    local cells = {["width"]  = cell_width, ["height"]  = cell_width}
+	    print( "gird,", grid_width, grid_height)
 	    for i = 0, grid_width + 1 do
 	    	cells[i] = {}
 	    	for j = 0, grid_height + 1 do
@@ -82,16 +82,19 @@
 	    		["xmax"] = cell_width*(i), ["xmin"] =  cell_width*(i-1),
     			["ymax"] = cell_height*(j), ["ymin"] = cell_height*(j-1),
     			["initialWindingNumber"] = {}, ["segments"] = {}, ["border"] = false }
+    			print("xmax" , cell_width*(i), "xmin",  cell_width*(i-1),
+    			"ymax",  cell_height*(j), "ymin",  cell_height*(j-1))
 
     		end
     		-- Define a border, so we can clip it when needed
     		cells[i][0].border = true
     		cells[i][grid_height + 1].border = true
     	end
-    	for j = 0, grid_height + 1 do 
+    	for j = 0, grid_height+ 1 do 
     		cells[0][j].border = true
     		cells[grid_width + 1][j].border = true
     	end
+    	cells.dx, cells.dy = cell_width, cell_height
 	    -- RETURN: A TABLE WITH FORMAT CELL[i][j] = {xmin, ymin, xmax, ymax, initialWindingNumber, segments = {} }
 	    return cells
 	end
@@ -106,7 +109,11 @@
 	local function rayCasting(segment, xmin, xmax, ymin, ymax)
 		local rayCastingFunction = segment.foo
 		-- Tests if it intersect
-		if segment.ymax >= ymax and segment.ymin <= ymax then
+		print("here",rayCastingFunction(segment, xmin, ymin), 
+				rayCastingFunction(segment, xmax, ymin) ,
+			   rayCastingFunction(segment, xmin, ymax), 
+				rayCastingFunction(segment, xmax, ymax))
+		if (segment.ymax >= ymax and segment.ymin <= ymax) then
 			if abs(rayCastingFunction(segment, xmin, ymin) + 
 				rayCastingFunction(segment, xmax, ymin))  == 1  or
 			   abs(rayCastingFunction(segment, xmin, ymax) +   
@@ -164,12 +171,15 @@
 	    -- 2) Ray cast 
 		--> check for intersection with right side
 	    --> If it does not intersect, check for intersection with top side (by rotating the cell)
-	    local xmin, xmax, ymin, ymax = cells[i][j].xmin, cells[i][j].xmax, 
-	    	cells[i][j].ymin, cells[i][j].ymax
+	    local xmin, xmax, ymin, ymax = cells[i][j].xmin, cells[i][j].xmax, cells[i][j].ymin, cells[i][j].ymax
+	    print(i, j, "xmin, xmax, ymin, ymax", xmin, xmax, ymin, ymax)
+	    print(concat(x, ","), concat(y, ","))
+	    	
 		if rayCasting(segment, xmin, xmax, ymin, ymax) then
 			return true
 		end
 		inv_segment = create_mirror_segment(segment)  -- Inverse ray casting
+		print(concat(inv_segment.x, ","), concat(inv_segment.y, ","))
 		if rayCasting(inv_segment, ymin, ymax, xmin, xmax) then
 			return true
 		end
@@ -197,7 +207,6 @@
 	local function createClosingCellSegment(x, y)
 		local xmax, xmin, ymax, ymin = bounding_values(x, y)
 		local sign = util.sign(y[2] - y[1])
-		print(x[1], y[1], x[2], y[2])
 		local a, b = y[2] - y[1], x[1] - x[2]
 		local c =  -(a*x[1] + b*y[1])
 		return {["x"] = x, ["y"] = y, ["foo"] = winding_number_linear, 
@@ -208,27 +217,28 @@
 
 	--DONE AND WORKING
 	local function walkInPath(path, cells, path_counter)
+		local event_list = {}
 	    for l, segment in ipairs(path.segments) do
 	    	segment.type = path.fill_type
 			segment.paint = path.paint
+			cellW, cellH = cells.dx, cells.dy
 	    	local x, y = segment.x, segment.y
-	    	if (x[1] == 0) then x[1] = 0.01 end
-	    	if (x[#x] == 0) then x[#x] = 0.01 end
-	    	if (y[1] == 0) then y[1] = 0.01 end
-	    	if (y[#y] == 0) then y[#y] = 0.01 end
+	    	if (x[1]%cellW == 0) then x[1] = x[1] + 0.01 end
+	    	if (x[#x]%cellW == 0) then x[#x] = x[#x] + 0.01 end
+	    	if (y[1]%cellH == 0) then y[1] = y[1] + 0.01 end
+	    	if (y[#y]%cellH == 0) then y[#y] = y[#y] + 0.01 end
 	    	local finali, finalj = findCellCoord(x[#x], y[#y], cells)
 	    	local i, j = findCellCoord(x[1], y[1], cells)
 	    	local segment_going_up    = finalj >= j
 	    	local segment_going_right = finali >= i
-
 			while true do
 		   		if not cells[i][j].segments[path_counter] then 
 					cells[i][j].segments[path_counter] = {}
 				end	
 		    	table.insert(cells[i][j].segments[path_counter], segment)
 	    	-- (1) pf final control point inside this cell or did we reach a border of the viewport?
-		    	if (i == finali and j == finalj) or cells[i][j].border then 
-		    		print("break", i, j)
+		    	if (i == finali and j == finalj)  or cells[i][j].border then 
+		    		--print("break", i, j)
 		    		break --leaves the while loop and goes to another segment
 		    	end
 		    -- (3) Test respective cells. If up: test cell[i][j+1], cell[i][j-1], cell[i+1][j]; 
@@ -290,14 +300,15 @@
 			    	end
 		    	end
 		    	if not flag then 
-		    		print("errrooooooooooo", i, j, concat(segment.x, ", "))
+
+		    		print("errrooooooooooo", i, j, finali, finalj,concat(x, ",") ,concat(y, ","), cells.dx, cells.dy, cells[i][j].xmin, cells[i][j].xmax, cells[i][j].ymin, cells[i][j].ymax )
 		    		break
 		    	end
 		    	--print("new cell", i, j)
 		    	flag = false
 	    	end
 		end
-		     -- RETURN: VOID
+		return event_list     -- RETURN: VOID
 	end
 	
 	--DONE AND WORKING
@@ -339,18 +350,18 @@
 			else
 				next_x = 1
 			end
-			print(x, next_x, y, next_y)
+			--print(x, next_x, y, next_y)
 			if w ~= 0 then
 				for dx = next_x, x - 1 do
 					cells[dx][y].initialWindingNumber[path] = w
 					str = str.."cell["..dx.."]["..y.."] = "..w..", "
 				end
 			else
-				print("w=0")
+				--print("w=0")
 			end
 			if next_y ~= y then 
 				w = event_list[i][1]
-				print(str)
+				--print(str)
 				str = ""
 			else 
 				w = w + event_list[i][1] 
@@ -362,15 +373,16 @@
 				cells[dx][y].initialWindingNumber[path] = w
 				str =  str.."cell["..dx.."]["..y.."] = "..w..", "
 			end
-			print(str)
+			--print(str)
 		end
-		print(str)
+		--print(str)
 		-- Loop through line changing winding number 'tilatl the net winding number is zero
 	    -- RETURN VOID
 	end
 
 	--DONE AND WORKING
 	local function prepareGrid(scene)
+		local event_list = {}
 	    -- 1) Compute grid dimensions
 	    local cell_width, cell_height = computeGridDimension(scene)
 	    -- 2) Create grid
@@ -381,47 +393,52 @@
 		for i, e in ipairs(scene.inverse_shapes_list) do
 			if e.shape.type == "path" then
 				cells.paths[i] =  e.shape
-				walkInPath(e.shape, cells, i)
+				event_list = walkInPath(e.shape, cells, i)
 			else
 				-- we have to think about it
 				-- maybe a function walkInCircle/Triangle/Polygon or segment them 
 			end
-		end
-	    -- 4) Sort event_list -> insertion_sort (or any other stable sort)
-		
-		for i in ipairs(event_list) do
-			print(i, event_list[i][1], event_list[i][2], event_list[i][3] )
-		end
-		local x_sorted_event_list = CountingSort(event_list, 2) -- (sort by x line)
-		local y_sorted_event_list = CountingSort(x_sorted_event_list, 3) -- (sort by x line)
-		for i in ipairs(y_sorted_event_list) do
-			print(i, y_sorted_event_list[i][1], y_sorted_event_list[i][2], y_sorted_event_list[i][3] )
-		end
-		print("------------------------------------")
-		-- 5) fix initial winding numbers
-		fixLineWindingNumber(cells, y_sorted_event_list)
-		for i = 1, cells.width do
-		for j = 1, cells.height do
-		if cells[i] then
-			if cells[i][j] then
-		if (cells[i][j].initialWindingNumber) then
-			for l, initialWindingNumber in pairs(cells[i][j].initialWindingNumber) do
-				winding_number  = initialWindingNumber
-				print("winding number cell", i, j, winding_number)
-				local path =  cells.paths[l]
-				if cells[i][j].segments[l] then
-					for i, segment in pairs(cells[i][j].segments[l]) do
-						print(segment.x[1], segment.y[1])
-					end
+			
+
+		    -- 4) Sort event_list -> insertion_sort (or any other stable sort)
+			if event_list[1] then
+
+				--[[for i in ipairs(event_list) do
+					print(i, event_list[i][1], event_list[i][2], event_list[i][3] )
+				end--]]
+				local x_sorted_event_list = CountingSort(event_list, 2) -- (sort by x line)
+				local y_sorted_event_list = CountingSort(x_sorted_event_list, 3) -- (sort by x line)
+				for i in ipairs(y_sorted_event_list) do
+					print(i, y_sorted_event_list[i][1], y_sorted_event_list[i][2], y_sorted_event_list[i][3] )
 				end
+				print("------------------------------------")--]]
+				-- 5) fix initial winding numbers
+				fixLineWindingNumber(cells, y_sorted_event_list)
+				--[[for i = 1, cells.width do
+					for j = 1, cells.height do
+						if cells[i] then
+							if cells[i][j] then
+								if (cells[i][j].initialWindingNumber) then
+									for l, initialWindingNumber in pairs(cells[i][j].initialWindingNumber) do
+										winding_number  = initialWindingNumber
+										print("winding number cell", i, j, winding_number)
+										local path =  cells.paths[l]
+										if cells[i][j].segments[l] then
+											for i, segment in pairs(cells[i][j].segments[l]) do
+												print(segment.x[1], segment.y[1])
+											end
+										end
+									end
+								end
+							end
+						end
+					end
+				end--]]
 			end
 		end
-		end
-	end
-	end
-end--]]
 	scene.cells = cells
 	    -- RETURN: FILLED GRID
+
 	end
 
 	local function sample_grid(scene, x, y)

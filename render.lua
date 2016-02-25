@@ -1,16 +1,14 @@
 local driver = require"driver"
 local image = require"image"
 local chronos = require"chronos"
-local cub = require"cubic"
-  local cubic = cub.cubic
+
 local unpack = table.unpack
 local bezier = require("bezier")
 local util = require"util"
 local blue = require"blue"
 local significant = util.significant
 local floor, ceil, min, max, sqrt, inf = math.floor, math.ceil, math.min, math.max, math.sqrt, math.huge
-local quadr = require"quadratic"
-  local quadratic = quadr.quadratic
+
 local _M = driver.new()
 local prepare = {}
 
@@ -108,7 +106,7 @@ local function compute_rational_maxima(x0, x1, x2, w)
     local b = 2*(x0 - 2*w*x0 + 2*x1 - x2)
     local c = 2*(w*x0 - x1)
 
-    n, r1, s1, r2, s2 = quadratic(a, b, c)
+    n, r1, s1, r2, s2 = _M.quadratic(a, b, c)
 
     local out1, out2 = 0, 0
     if n > 0 then out1 = r1/s1 end
@@ -211,14 +209,14 @@ roots = {
     if p[2] then return {-p[1]/p[2]} end
   end,
   function (p) --degree 2
-    local n,t1,s1,t2,s2 = quadratic(p[3],p[2],p[1])
+    local n,t1,s1,t2,s2 = _M.quadratic(p[3],p[2],p[1])
     if n==2 then return {t1*(1/s1),t2*(1/s2)}
     elseif n==1 then return {t1*(1/s1)}
     else return {}
     end
   end,
   function (p) --degree 3
-    local n,t1,s1,t2,s2,t3,s3 = cubic(p[4],p[3],p[2],p[1])
+    local n,t1,s1,t2,s2,t3,s3 = _M.cubic(p[4],p[3],p[2],p[1])
     if n==3 then return {t1*(1/s1),t2*(1/s2),t3*(1/s3)}
     elseif n==2 then return {t1*(1/s1),t2*(1/s2)}
     elseif n==1 then return {t1*(1/s1)}
@@ -428,7 +426,7 @@ local implicit = {
 	-------------------------------------------------------------------------------------l]
 
 	-- Contains (1) the cell coordinates and (2) the initial winding number increment
-	local cell_size = 30
+	local cell_size = 70
 
 	--DONE AND WORKING
 	local function computeGridDimension(scene)
@@ -444,17 +442,8 @@ local implicit = {
 
 	--DONE AND WORKING
 	local function findCellCoord(x, y, grid) -- 0 and >n will mean out of the grid
-    return ceil(grid.n*y*(1/grid.height)), ceil(grid.m*x*(1/grid.width))
+    return floor(grid.n*y*(1/grid.height) + 1), floor(grid.m*x*(1/grid.width) + 1)
 	end
-
-  local function sameCell(i, j, ifinal, jfinal)
-    if ifinal == 0 or jfinal == 0 then
-      return (i == ifinal +1 and j == jfinal) or
-        (i == ifinal and j == jfinal + 1) or
-        (i == ifinal + 1 and j == jfinal + 1)
-    end
-    return i == ifinal and j == jfinal
-  end
 
 	-----------------------------------------------------------------------------------
   local function insideGrid(i,j,m,n) -- Will try to use this later
@@ -487,71 +476,102 @@ local implicit = {
 	  for l, segment in ipairs(segments) do
 	    local x, y = segment.x, segment.y
       local n, m = grid.n, grid.m
-	    local begi, begj = findCellCoord(x[1], y[1], grid)
+
+      -- if (x[1]%grid.cell_width == 0) then x[1] = x[1] + 0.01 end
+	    -- if (x[#x]%grid.cell_width == 0) then x[#x] = x[#x] + 0.01 end
+	    -- if (y[1]%grid.cell_height == 0) then y[1] = y[1] + 0.01 end
+	    -- if (y[#y]%grid.cell_height == 0) then y[#y] = y[#y] + 0.01 end
+
+      local begi, begj = findCellCoord(x[1], y[1], grid)
       local finali, finalj = findCellCoord(x[#x], y[#y], grid)
       local segment_going_up = (finali >= begi)
       local segment_going_right = (finalj >= begj)
       local i, j = begi, begj
 
-      local it, Nmax = 1, 1000
-      while true  do
-        print(i, j, finali, finalj, table.concat(segment.x, ", "))
+      local it, Nmax = 1, 100
+      while it < Nmax  do
         it = it+1
         alocate_and_insert(grid,i,j,i_path,segment)
 	    	-- (1) pf final control point inside this cell or did we reach a border of the viewport?
-		    if sameCell(i, j, finali, finalj) then--or cells[i][j].border then
+		    if (i == finali and j == finalj) then--or cells[i][j].border then
+          print("break")
 		    	break --leaves the while loop and goes to another segment
 		    end
 		    -- (3) Test respective cells. If up: test cell[i+1][j], cell[i][j+1], cell[i][j-1];
         local xmin, xmax =  (j-1)*grid.cell_width, j*grid.cell_width
   	    local ymin, ymax = (i-1)*grid.cell_height, i*grid.cell_height
         local w_up_left, w_up_right, w_down_left, w_down_right = 0, 0, 0, 0
+
+        if x[#x] == xmax and y[#y] == ymax then
+          i,j = i+1,j+1
+          event_list[#event_list+1] = {1,i,j}
+          break
+        end
+
 	    	if segment_going_up then
           w_up_left  = winding[segment.type](segment,xmin,ymax)
           w_up_right = winding[segment.type](segment,xmax,ymax)
-          if (w_up_left ~= 0 and w_up_right == 0) or (w_up_right ~= 0 and w_up_left == 0) then--if go up
-	    		--if intersectSegmentCell(i, j+1, grid, segment) then ----This function does too much
-            -- alocate_and_add_winding(grid,i+1,j,i_path,1)
+          if (w_up_left ~= 0 and w_up_right == 0) or (w_up_right ~= 0 and w_up_left == 0) or (math.abs(y[#y] - ymax) < 10^(-8) and x[#x] >= xmin and x[#x] <= xmax) then--if go up
 		    		i = i+1
             event_list[#event_list+1] = {1,i,j}
+
+            if (w_up_left ~= 0 and w_up_right == 0) then print("up1") end
+            if (w_up_right ~= 0 and w_up_left == 0) then print("up2") end
+            if (math.abs(y[#y] - ymax) < 10^(-8) and x[#x] >= xmin and x[#x] <= xmax) then print("up3") end
+
+
           elseif segment_going_right then -- if go right
-            if x[#x] > xmax then
-              j = j+1
+            j = j+1
+            print("right")
+            if y[#y] < ymax then
               alocate_and_insert(grid,i,j-1,i_path,implicit[1](x[#x],y[#y],x[#x],ymax)) --insert line going up
             end
-    			else                            -- if go left
-            if x[#x] < xmin then
-              --if y[1] > ymin then
-                alocate_and_insert(grid,i,j-1,i_path,implicit[1](x[1],ymax,x[1],y[1])) --insert line going down
-              --end
-              j = j-1
+    			elseif x[#x] < xmin then       -- if go left
+            j = j-1
+            print("left")
+            if y[1] < ymax then
+              alocate_and_insert(grid,i,j,i_path,implicit[1](x[1],ymax,x[1],y[1])) --insert line going down
             end
+          elseif x[#x] <= xmin then
+            break
           end
         else
           w_down_left =  winding[segment.type](segment,xmin,ymin)
           w_down_right = winding[segment.type](segment,xmax,ymin)
-          if ymin == y[#y] and x[#x] > xmin and x[#x] <= xmax then
-           event_list[#event_list+1] = {-1,i,j}
-           break
-          end
-          if (w_down_left ~= 0 and w_down_right == 0) or (w_down_right ~= 0 and w_down_left == 0) or ymin == y[1] then--if go down
-            -- alocate_and_add_winding(grid,i,j,i_path,-1)
+          if ymin == y[#y] and x[#x] >= xmin and x[#x] < xmax then
             event_list[#event_list+1] = {-1,i,j}
+            print("break2")
+             break
+          end
+          if (y[1] == ymin and y[#y] < ymin) then
+            event_list[#event_list+1] = {-1,i,j}
+            print("down")
             i = i-1
+          elseif (w_down_left ~= 0 and w_down_right == 0) or (w_down_right ~= 0 and w_down_left == 0) then--if go down
+            event_list[#event_list+1] = {-1,i,j}
+            if y[#y] < ymin then i = i-1 end
           elseif segment_going_right then -- if go right
-            if x[#x] > xmax then
-	    			  j = j+1
+            j = j+1
+            print("right")
+            if y[#y] < ymax then
               alocate_and_insert(grid,i,j-1,i_path,implicit[1](x[#x],y[#y],x[#x],ymax)) --insert line going up
             end
-    			else                            -- if go left
-            if x[#x] < xmin then
-              alocate_and_insert(grid,i,j-1,i_path,implicit[1](x[1],ymax,x[1],y[1])) --insert line going down
-              j = j-1
+    			elseif x[#x] < xmin then                -- if go left
+            j = j-1
+            print("left")
+            if y[1] < ymax then
+              alocate_and_insert(grid,i,j,i_path,implicit[1](x[1],ymax,x[1],y[1])) --insert line going down
             end
+          elseif x[#x] <= xmin then
+            break
           end
         end
+        if it == Nmax then
+          print(x[1],y[1],x[#x],y[#y])
+          print(xmin,ymin,xmax,ymax)
+        end
       end
-      print(it)
+
     end
     return event_list
 	        -- RETURN: VOID
@@ -562,6 +582,7 @@ local implicit = {
 	local function CountingSort(array, key)
 		local count = {}
     local ind = {}
+    if #array == 0 then return {} end
 	  for j = 1, #array do
 	  	i = array[j][key]
       ind[#ind+1] = i
@@ -585,14 +606,30 @@ local implicit = {
 	end
 
   local function running_sum(grid, list, i_path)
-    for k = #list,2,-1 do
-      local wN,i,j = unpack(list[k])
-      local cell = grid[i][j]
-      --print(wN, i, j)
-      --for i,e in pairs(cell[i_path]) do print
-        for l = j-1,list[k-1][3],-1 do
+    local total = 0
+    local wN,i,j = unpack(list[#list])
+    for k = #list-1,1,-1 do
+      local next_i, next_j = list[k][2], 1
+      local same_line = (next_i == i)
+      if same_line then
+        next_j = list[k][3]
+      end
+      if wN ~= 0 then
+        for l = next_j,j-1 do
           alocate_and_add_winding(grid,i,l,i_path,wN)
         end
+      end
+      if not same_line then
+        wN = list[k][1]
+      else
+        wN = wN + list[k][1]
+      end
+      i, j = list[k][2], list[k][3]
+    end
+    if wN ~= 0 then
+      for l = 1,j-1 do
+        alocate_and_add_winding(grid,i,l,i_path,wN)
+      end
     end
   end
 
@@ -608,24 +645,16 @@ local implicit = {
 	    -- 3) loop through paths inside scene
 		-- insert here yout respective sample loop
 		for i, e in ipairs(scene.elements) do
+      -- for i,e in ipairs(e.shape.segments) do print(e.type) end
 			local event_list = walkInPath(scene.grid, e.shape.segments, i)
-      local y_order = CountingSort(event_list, 3) -- (sort by y line)
-      local x_order = CountingSort(y_order, 2)
-      --for i,e in ipairs(x_order) do print(e[1],e[2],e[3]) end
-
-      running_sum(scene.grid,x_order,i)
+      -- for i,e in ipairs(event_list) do print(e[1],e[2],e[3]) end
+      if #event_list > 0 then
+        local y_order = CountingSort(event_list, 3) -- (sort by y line)
+        local x_order = CountingSort(y_order, 2)
+        running_sum(scene.grid,x_order,i)
+      end
 		end
-    -- for i,e in pairs(scene.grid) do
-    --   if type(e) == "table" then
-    --     print(i)
-    --     for j,f in pairs(e) do
-    --       print(j)
-    --       for o,i_path in ipairs(f.order) do
-    --         print(o,i_path)
-    --       end
-    --     end
-    --   end
-    -- end
+
 	    -- 4) Sort event_list -> insertion_sort (or any other stable sort)
 	end
 
@@ -649,11 +678,11 @@ function execute.end_closed_contour(shape)
 end
 
 function execute.end_open_contour(shape)
-  if not shape.degenerated then
-    shape.degenerated = false
-  else
+  -- if not shape.degenerated then
+  --   shape.degenerated = false
+  -- else
     shape.segments[#shape.segments+1] = implicit[1](shape.data[shape.pos],shape.data[shape.pos+1],shape.data[shape.beg],shape.data[shape.beg+1])
-  end
+  -- end
 end
 
 function execute.linear_segment(shape)
@@ -787,7 +816,6 @@ function prepare.circle(shape)
       _M.R,  s, -s,  s, 1, 0,		-- colocar em baixo os parametros do circulo
       _M.Z}:scale(r, r):translate(cx, cy)
   shape.xf = xf*shape.xf
-  -- for i,e in pairs(shape.xf) do print(i,e) end
   return prepare.path(shape)
 end
 --------------------------------------------------------------------------------
@@ -860,8 +888,87 @@ local function stderr(...)
     io.stderr:write(string.format(...))
 end
 
-function _M.render(scene, viewport, file)
+function _M.render(scene, viewport, file, arguments)
 local time = chronos.chronos()
+local preprocess = chronos.chronos()
+local pattern = blue[1]
+local maxdepth = MAX_DEPTH
+local minsegs = MIN_SEGS
+local scenetree = false
+local prefix = "none"
+if #arguments > 0 then stderr("driver arguments:\n") end
+for i, argument in ipairs(arguments) do
+    stderr("  %d: %s\n", i, argument)
+end
+local tx, ty = 0., 0.
+local p = nil
+-- list of supported options
+local options = {
+    { "^%-prefix:(.*)$", function(n)
+        if not n then return false end
+        prefix = n
+        return true
+    end },
+    { "^(%-maxdepth:(%d+)(.*))$", function(all, n, e)
+        if not n then return false end
+        assert(e == "", "invalid option " .. all)
+        maxdepth = assert(tonumber(n), "invalid option " .. all)
+        assert(maxdepth >= 1, "invalid option " .. all)
+        return true
+    end },
+    { "^(%-tx:(%-?%d+)(.*))$", function(all, n, e)
+        if not n then return false end
+        assert(e == "", "trail invalid option " .. all)
+        tx = assert(tonumber(n), "number invalid option " .. all)
+        return true
+    end },
+    { "^(%-ty:(%-?%d+)(.*))$", function(all, n, e)
+        if not n then return false end
+        assert(e == "", "trail invalid option " .. all)
+        ty = assert(tonumber(n), "number invalid option " .. all)
+        return true
+    end },
+    { "^(%-p:(%d+)(.*))$", function(all, n, e)
+        if not n then return false end
+        assert(e == "", "trail invalid option " .. all)
+        p = assert(tonumber(n), "number invalid option " .. all)
+        assert(p >= 1 and p <= #scene.elements, "path out of range")
+        return true
+    end },
+    { "^(%-pattern:(%d+)(.*))$", function(all, n, e)
+        if not n then return false end
+        assert(e == "", "trail invalid option " .. all)
+        n = assert(tonumber(n), "number invalid option " .. all)
+        assert(blue[n], "non exist invalid option " .. all)
+        pattern = blue[n]
+        return true
+    end },
+    { "^(%-minsegs:(%d+)(.*))$", function(all, n, e)
+        if not n then return false end
+        assert(e == "", "invalid option " .. all)
+        minsegs = assert(tonumber(n), "invalid option " .. all)
+        return true
+    end },
+    { "^%-verbose$", function(all)
+        if not all then return false end
+        verbose = true
+        return true
+    end },
+    { ".*", function(all)
+        error("unrecognized option " .. all)
+    end }
+}
+-- process options
+for i, argument in ipairs(arguments) do
+    for j, option in ipairs(options) do
+        if option[2](argument:match(option[1])) then
+            break
+        end
+    end
+end
+if p then scene.elements = { scene.elements[p] } end
+-- potentially apply translation to scene for debugging
+scene = scene:translate(tx, ty)
     -- make sure scene does not contain any unsuported content
     checkscene(scene)
     -- get viewport

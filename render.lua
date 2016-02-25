@@ -426,7 +426,7 @@ local implicit = {
 	-------------------------------------------------------------------------------------l]
 
 	-- Contains (1) the cell coordinates and (2) the initial winding number increment
-	local cell_size = 70
+	local cell_size = 10
 
 	--DONE AND WORKING
 	local function computeGridDimension(scene)
@@ -473,102 +473,99 @@ local implicit = {
 	--DONE AND WORKING
 	local function walkInPath(grid, segments, i_path)
     local event_list = {}
+    local n, m = grid.n, grid.m
+    local x, y = {}, {}
+    local xmax,xmin,ymax,ymin = 0,0,0,0
+    local i, j = 1, 1
+    local goup = function()
+      i = i+1
+      -- print("up")
+      event_list[#event_list+1] = {1,i,j}
+    end
+    local godown = function()
+      event_list[#event_list+1] = {-1,i,j}
+      -- print("down")
+      i = i-1
+    end
+    local goright = function()
+      j = j+1
+      -- print("right")
+      if y[#y] < ymax then
+        alocate_and_insert(grid,i,j-1,i_path,implicit[1](x[#x],y[#y],x[#x],ymax)) --insert line going up
+      end
+    end
+    local goleft = function()
+      j = j-1
+      -- print("left")
+      if y[1] < ymax  then
+        alocate_and_insert(grid,i,j,i_path,implicit[1](x[1],ymax,x[1],y[1])) --insert line going down
+      end
+    end
 	  for l, segment in ipairs(segments) do
-	    local x, y = segment.x, segment.y
-      local n, m = grid.n, grid.m
-
-      -- if (x[1]%grid.cell_width == 0) then x[1] = x[1] + 0.01 end
-	    -- if (x[#x]%grid.cell_width == 0) then x[#x] = x[#x] + 0.01 end
-	    -- if (y[1]%grid.cell_height == 0) then y[1] = y[1] + 0.01 end
-	    -- if (y[#y]%grid.cell_height == 0) then y[#y] = y[#y] + 0.01 end
+	    x, y = segment.x, segment.y
 
       local begi, begj = findCellCoord(x[1], y[1], grid)
       local finali, finalj = findCellCoord(x[#x], y[#y], grid)
+      -- print(x[1],y[1],x[#x], y[#y],begi,begj,finali,finalj,n,m,grid.height,grid.width)
       local segment_going_up = (finali >= begi)
       local segment_going_right = (finalj >= begj)
-      local i, j = begi, begj
+      i, j = begi, begj
 
       local it, Nmax = 1, 100
       while it < Nmax  do
         it = it+1
         alocate_and_insert(grid,i,j,i_path,segment)
-	    	-- (1) pf final control point inside this cell or did we reach a border of the viewport?
-		    if (i == finali and j == finalj) then--or cells[i][j].border then
-          print("break")
-		    	break --leaves the while loop and goes to another segment
-		    end
-		    -- (3) Test respective cells. If up: test cell[i+1][j], cell[i][j+1], cell[i][j-1];
-        local xmin, xmax =  (j-1)*grid.cell_width, j*grid.cell_width
-  	    local ymin, ymax = (i-1)*grid.cell_height, i*grid.cell_height
-        local w_up_left, w_up_right, w_down_left, w_down_right = 0, 0, 0, 0
-
-        if x[#x] == xmax and y[#y] == ymax then
-          i,j = i+1,j+1
-          event_list[#event_list+1] = {1,i,j}
-          break
+        if (i == finali and j == finalj) then--or cells[i][j].border then
+          -- if y[#y] == ymin then event_list[#event_list+1] = {-1,i,j} end
+          -- print("break")
+          break --leaves the while loop and goes to another segment
         end
-
-	    	if segment_going_up then
+        xmin, xmax =  (j-1)*grid.cell_width, j*grid.cell_width
+  	    ymin, ymax = (i-1)*grid.cell_height, i*grid.cell_height
+        local w_up_left, w_up_right, w_down_left, w_down_right = 0, 0, 0, 0
+        if segment_going_up then
           w_up_left  = winding[segment.type](segment,xmin,ymax)
           w_up_right = winding[segment.type](segment,xmax,ymax)
-          if (w_up_left ~= 0 and w_up_right == 0) or (w_up_right ~= 0 and w_up_left == 0) or (math.abs(y[#y] - ymax) < 10^(-8) and x[#x] >= xmin and x[#x] <= xmax) then--if go up
-		    		i = i+1
-            event_list[#event_list+1] = {1,i,j}
-
-            if (w_up_left ~= 0 and w_up_right == 0) then print("up1") end
-            if (w_up_right ~= 0 and w_up_left == 0) then print("up2") end
-            if (math.abs(y[#y] - ymax) < 10^(-8) and x[#x] >= xmin and x[#x] <= xmax) then print("up3") end
-
-
-          elseif segment_going_right then -- if go right
-            j = j+1
-            print("right")
-            if y[#y] < ymax then
-              alocate_and_insert(grid,i,j-1,i_path,implicit[1](x[#x],y[#y],x[#x],ymax)) --insert line going up
-            end
-    			elseif x[#x] < xmin then       -- if go left
-            j = j-1
-            print("left")
-            if y[1] < ymax then
-              alocate_and_insert(grid,i,j,i_path,implicit[1](x[1],ymax,x[1],y[1])) --insert line going down
-            end
-          elseif x[#x] <= xmin then
-            break
+          -- print(xmin,ymax,w_up_left,xmax,ymax,w_up_right)
+          if (x[1] == xmin and x[#x] == xmin and y[#y] >=--[[diff]] ymax) then
+            goup()
+          elseif (w_up_left ~= 0 and w_up_right == 0) or
+            (w_up_right ~= 0 and w_up_left == 0) or
+            (y[#y] == ymax --[[diff--]]and x[#x] >= xmin and x[#x] <= xmax) then
+            goup()
+          elseif segment_going_right and x[#x]then
+            goright()
+          elseif x[#x] < xmin then
+            goleft()
           end
         else
           w_down_left =  winding[segment.type](segment,xmin,ymin)
           w_down_right = winding[segment.type](segment,xmax,ymin)
+
           if ymin == y[#y] and x[#x] >= xmin and x[#x] < xmax then
             event_list[#event_list+1] = {-1,i,j}
-            print("break2")
+            -- print("break2")
              break
           end
           if (y[1] == ymin and y[#y] < ymin) then
-            event_list[#event_list+1] = {-1,i,j}
-            print("down")
-            i = i-1
-          elseif (w_down_left ~= 0 and w_down_right == 0) or (w_down_right ~= 0 and w_down_left == 0) then--if go down
-            event_list[#event_list+1] = {-1,i,j}
-            if y[#y] < ymin then i = i-1 end
-          elseif segment_going_right then -- if go right
-            j = j+1
-            print("right")
-            if y[#y] < ymax then
-              alocate_and_insert(grid,i,j-1,i_path,implicit[1](x[#x],y[#y],x[#x],ymax)) --insert line going up
-            end
-    			elseif x[#x] < xmin then                -- if go left
-            j = j-1
-            print("left")
-            if y[1] < ymax then
-              alocate_and_insert(grid,i,j,i_path,implicit[1](x[1],ymax,x[1],y[1])) --insert line going down
-            end
+            godown()
+          elseif (x[1] == xmin and x[#x] == xmin and y[#y] < ymin) then
+            godown()
+          elseif (w_down_left ~= 0 and w_down_right == 0) or
+            (w_down_right ~= 0 and w_down_left == 0) then
+              godown()
+          elseif segment_going_right then
+            goright()
+          elseif x[#x] < xmin then                -- if go left
+            goleft()
           elseif x[#x] <= xmin then
             break
           end
         end
+
         if it == Nmax then
           print(x[1],y[1],x[#x],y[#y])
-          print(xmin,ymin,xmax,ymax)
+          print((begj-1)*grid.cell_width,(begi-1)*grid.cell_height,(begj)*grid.cell_width,(begi)*grid.cell_height)
         end
       end
 
@@ -638,7 +635,7 @@ local implicit = {
 	    -- 1) Compute grid dimensions
     scene.grid = {}
 	  scene.grid.n, scene.grid.m = computeGridDimension(scene) --n x m grid
-    scene.grid.cell_width, scene.grid.cell_height = scene.width/scene.grid.n, scene.height/scene.grid.m
+    scene.grid.cell_width, scene.grid.cell_height = scene.width/scene.grid.m, scene.height/scene.grid.n
     scene.grid.width, scene.grid.height = scene.width, scene.height --This could've been passed directly
 	    -- 2) Create grid
 		-- local cells = makeGrid(scene.width, scene.height, n, m)
@@ -658,9 +655,6 @@ local implicit = {
 	    -- 4) Sort event_list -> insertion_sort (or any other stable sort)
 	end
 
-
-
-
 -- prepare paths
 -------------------------------Instructions-------------------------------------
 local execute = {}
@@ -678,11 +672,11 @@ function execute.end_closed_contour(shape)
 end
 
 function execute.end_open_contour(shape)
-  -- if not shape.degenerated then
-  --   shape.degenerated = false
-  -- else
+  if shape.degenerated then
+    shape.degenerated = false
+  else
     shape.segments[#shape.segments+1] = implicit[1](shape.data[shape.pos],shape.data[shape.pos+1],shape.data[shape.beg],shape.data[shape.beg+1])
-  -- end
+  end
 end
 
 function execute.linear_segment(shape)
@@ -819,6 +813,49 @@ function prepare.circle(shape)
   return prepare.path(shape)
 end
 --------------------------------------------------------------------------------
+--------------------------Paint auxiliares--------------------------------------
+local spread = {
+  pad = function (t)
+    return min(1,max(0,t))
+  end,
+  ["repeat"] = function (t)
+    return t-floor(t)
+  end,
+  reflect = function (t)
+    return 2*math.abs(t*.5 - floor(t*.5 + .5))
+  end,
+  transparent = function (t) return t end
+}
+
+local function interpolate(t1,t2,t,c1,c2)
+  local a, b, c = 1/(t2-t1), t2-t, t-t1
+  return {a*(b*c1[1]+c*c2[1]), a*(b*c1[2]+c*c2[2]), a*(b*c1[3]+c*c2[3]), a*(b*c1[4]+c*c2[4])}
+end
+
+local function ramp(r,t)
+  for i=1,(#r-3),2 do
+    if t >= r[i] and t < r[i+2] then
+      return interpolate(r[i],r[i+2],t,r[i+1],r[i+3])
+    end
+  end
+  if r.spread == "transparent" then return {0,0,0,0}
+  elseif t < r[1] then return r[2]
+  elseif t >= r[#r-1] then return r[#r]
+  end
+  return {0,0,0,0}
+end
+
+local function ramp_texture(img,p)
+  local w, h = img.width, img.height
+  local x, y = p[1]*w + 1/2, p[2]*h + 1/2
+  local x1,y1,x2,y2,x3,y3,x4,y4 = floor(x), ceil(y), ceil(x), ceil(y), floor(x), floor(y), ceil(x), floor(y)
+  local a1,a2,a3,a4 = (x4-x)*(y-y4), (x-x3)*(y-y3), (x2-x)*(y2-y), (x-x1)*(y1-y)
+  local c1,c2,c3,c4 = {img:get(max(x1,1),min(y1,h))}, {img:get(min(x2,w),min(y2,h))}, {img:get(max(x3,1),max(y3,1))}, {img:get(min(x4,w),max(y4,1))}
+  return addM(addM(mult(a1,c1),mult(a2,c2)),addM(mult(a3,c3),mult(a4,c4)))
+end
+
+
+
 --------------------------Preparing Paint---------------------------------------
 function prepare.solid(paint)
   paint.data[4] = paint.data[4]*paint.opacity
@@ -827,6 +864,49 @@ function prepare.solid(paint)
   end
 end
 
+function prepare.lineargradient(paint)
+  local data = paint.data
+  for i=1,#data.ramp-1,2 do
+    data.ramp[i+1][4] = data.ramp[i+1][4]*paint.opacity
+  end
+  local wrapping = spread[data.ramp.spread]
+  local function lmap(p)
+    local v = data.p2 - data.p1
+    return _M.dot(p-data.p1,v)/(_M.dot(v,v)) -- a lot of divisions :/
+  end
+  paint.color = function (self,x,y)
+    return ramp(data.ramp,wrapping(lmap(self.xf*_M.vector(x,y))))
+  end
+end
+
+function prepare.radialgradient(paint)
+  local data = paint.data
+  for i=1,#data.ramp-1,2 do
+    data.ramp[i+1][4] = data.ramp[i+1][4]*paint.opacity
+  end
+  local r,c,f = data.radius, data.center, data.focus
+  assert(r > 0, "wrong parameters")
+  local wrapping = spread[data.ramp.spread]
+  local v = f-c
+  local d_to_v = _M.dot(v,v)
+  if d_to_v > r^2 then
+    r = c + (r/math.sqrt(d_to_v))*v
+  end
+  local function rmap(p)
+    local u = p-f
+    local d1 = _M.dot(u,u)
+    if d1 == 0 then return 0 end
+    local p = {d_to_v-r^2,2*_M.dot(u,v),d1}
+    local t = roots[2](p)
+    if t[1] > 0 then return 1/t[1]
+    elseif t[2] > 0 then return 1/t[2]
+    else return 1
+    end
+  end
+  paint.color = function (self,x,y)
+    return ramp(data.ramp,wrapping(rmap(self.xf*_M.vector(x,y))))
+  end
+end
 
 
 

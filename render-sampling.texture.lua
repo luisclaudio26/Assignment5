@@ -21,7 +21,7 @@ function table.empty (self)
 end
 
 local function truncate_parameter(t)
-    if t < 0 or t == -math.huge then t = 0 --????
+    if t < 0 or t == -math.huge then t = 0
     elseif t > 1 or t == math.huge then t = 1
     end
     return t
@@ -33,25 +33,42 @@ local function prod_biP(p,q) -- This is simple product (ax + by + c)*(dx + ey + 
   return {c*f, a*f + c*d, b*f + c*e, a*e + b*d, a*d, b*e}
 end
 
-local function prod_biP_2(p,q)
+local function prod_biP_2(p,q) -- Product (ax + by + c)*(dx² + ey² + fxy + gx + hy + i)
   local c,b,a = unpack(p)
   local i,g,h,f,d,e = unpack(q)
   return {c*i, a*i + c*g, b*i + c*h, a*h + b*g + c*f, a*g + c*d, b*h + c*e, a*f + b*d, b*f + a*e, a*d, b*e}
 end
 
-function colinear(x, y)
+local function colinear(x, y)
   if (not x[4]) then
     return (x[1]*(y[2]- y[3]) + x[2]*(y[3] - y[1]) + x[3]*(y[1] - y[2]) == 0)
   else
-    return
-    (x[1]*(y[2]- y[3]) + x[2]*(y[3] - y[1]) + x[3]*(y[1] - y[2]) == 0) and
-    (x[4]*(y[2]- y[3]) + x[2]*(y[3] - y[4]) + x[3]*(y[4] - y[2]) == 0)
+    return (x[1]*(y[2]- y[3]) + x[2]*(y[3] - y[1]) + x[3]*(y[1] - y[2]) == 0) and
+           (x[4]*(y[2]- y[3]) + x[2]*(y[3] - y[4]) + x[3]*(y[4] - y[2]) == 0)
   end
 end
 
+local function cross_with_e1(v1, v2, v3) -- cross product with e1 = (1,0,0)
+  local a, b, c, d = v1[1], v1[2], v1[3], v1[4]
+  local l, e, f, g = v2[1], v2[2], v2[3], v2[4]
+  return c*g - d*f, d*e - b*g, b*f - c*e
+end
+
+local function mult(s,u)
+  local w = {}
+  for i=1,#u do w[i] = s*u[i] end
+  return w
+end
+
+local function addM(u,v)
+  assert(#u == #v, "dot product failed")
+  local w = {}
+  for i=1,#u do w[i] = u[i]+v[i] end
+  return w
+end
+
 ---------------------------Auxiliarie functions---------------------------------
--- I use this to transform and add to the bounding box m points
-local function dataTransform(shape,data,pos,m)
+local function dataTransform(shape,data,pos,m) -- I use this to transform and add to the bounding box m points
   for i=0,(m-1) do
     data[pos+2*i], data[pos+(2*i+1)] = shape.xf : apply(data[pos+2*i],data[pos+(2*i+1)])
     shape.xmin = min(shape.xmin or  inf, data[pos+2*i])
@@ -62,35 +79,32 @@ local function dataTransform(shape,data,pos,m)
   return data
 end
 
-local function blend(f,b)
-  return {f[4]*f[1]+(1-f[4])*b[4]*b[1],f[4]*f[2]+(1-f[4])*b[4]*b[2],f[4]*f[3]+(1-f[4])*b[4]*b[3],f[4]+(1-f[4])*b[4]}
+local function blend(f,b) -- color composition
+  return {f[4]*f[1] + (1-f[4])*b[4]*b[1],
+          f[4]*f[2] + (1-f[4])*b[4]*b[2],
+          f[4]*f[3] + (1-f[4])*b[4]*b[3],
+               f[4] + (1-f[4])*b[4]      }
 end
 
-local function cross_with_e1(v1, v2, v3)
-  local a, b, c, d = v1[1], v1[2], v1[3], v1[4]
-  local l, e, f, g = v2[1], v2[2], v2[3], v2[4]
-  return -d*f + c*g,d*e - b*g,-c*e + b*f
+local function bezier_to_poly2(x,y,w) -- Find the coefficients of the bezier polynomial for rational quadratics
+  local w = w or 1
+  return {x[1], 2*(x[2]-x[1]), x[1] - 2*x[2] + x[3]},
+         {y[1], 2*(y[2]-y[1]), y[1] - 2*y[2] + y[3]},
+         {   1,       2*w - 2,              2 - 2*w}
 end
 
-local function bezier_to_poly3(x,y)
+local function bezier_to_poly3(x,y) -- Find the coefficients of the bezier polynomial for integral cubics
   return {x[1], -3*x[1] + 3*x[2], 3*x[1] - 6*x[2] + 3*x[3], -x[1] + 3*x[2] - 3*x[3] + x[4]},
          {y[1], -3*y[1] + 3*y[2], 3*y[1] - 6*y[2] + 3*y[3], -y[1] + 3*y[2] - 3*y[3] + y[4]}
 end
 
-local function bezier_to_poly2(x,y,w)
-  local w = w or 1
-  return {x[1], 2*(x[2]-x[1]), x[1] - 2*x[2] + x[3]},
-         {y[1], 2*(y[2]-y[1]), y[1] - 2*y[2] + y[3]},
-         { 1,   2*w - 2,        2 - 2*w}
-end
-
-local function difP(p)
+local function difP(p) -- Return the coefficients of the derivative of a polynomial
   local dp = {0}
   for i=1,(#p-1) do dp[i] = i*p[i+1] end
   return dp
 end
 
-local function multP(p,q)
+local function multP(p,q) -- Return the coefficients of the multiplication of two polynomials
   local n, m, h = #p, #q, {}
   for i=1,(n+m-1) do h[i] = 0 end
   for i=1,n do
@@ -102,7 +116,7 @@ local function multP(p,q)
 end
 
 local function compute_rational_maxima(x0, x1, x2, w)
-    local a = 2*(-1 + w)*(x0 - x2)
+    local a = 2*(w - 1)*(x0 - x2)
     local b = 2*(x0 - 2*w*x0 + 2*x1 - x2)
     local c = 2*(w*x0 - x1)
 
@@ -112,8 +126,7 @@ local function compute_rational_maxima(x0, x1, x2, w)
     if n > 0 then out1 = r1/s1 end
     if n > 1 then out2 = r2/s2 end
 
-    out1, out2 = truncate_parameter(out1), truncate_parameter(out2)
-    return out1, out2
+    return truncate_parameter(out1), truncate_parameter(out2)
 end
 
 local bezier_cut = {0,
@@ -132,10 +145,10 @@ local bezier_cut = {0,
 }
 
 local function polyToFun(p)
+  local n = (#p-1)
   return function (t)
-    local n = (#p-1)
-    local v = p[1]
-    for i=1,n do v = v + p[i+1]*(t^i) end
+    local v = p[n+1]
+    for i=n,1,-1 do v = t*v + p[i] end
     return v
   end
 end
@@ -176,7 +189,7 @@ local function safe_newton_raphson(f,df,a,b)
   end
 end
 
-local function poly_num_root(p,a,b)
+local function poly_num_root(p,a,b) -- This return the set of roots in [a,b] of a polynomial with any degree
   local Dp = difP(p)
   local funP, fundP = polyToFun(p), polyToFun(Dp)
   local So, S = roots[math.min(#Dp-1,4)](Dp,a,b), {}
@@ -277,7 +290,7 @@ local partition = {0,
   end
 }
 
-local function intersectLine(l1,l2)
+local function intersectLine(l1,l2) -- Finds the intersection of two lines
   local a1,b1,a2,b2 = l1[4]-l1[2], l1[1]-l1[3], l2[4]-l2[2], l2[1]-l2[3]
   local c1,c2,s1,s2 = -(a1*l1[1] + b1*l1[2]), -(a2*l2[1] + b2*l2[2]), sign(a1), sign(a2)
   local A = _M.xform(a1,b1,c1,a2,b2,c2,0,0,1)
@@ -302,8 +315,7 @@ function winding.quadratic(c,x,y)
       elseif c.R(x,y)*c.sR > 0 then return c.s
       end
     else
-      if c.sl > 0 and c.R(x,y)*c.sR < 0 then
-        return c.s
+      if c.sl > 0 and c.R(x,y)*c.sR < 0 then return c.s
       end
     end
   end
@@ -426,31 +438,24 @@ local implicit = {
 	-------------------------------------------------------------------------------------l]
 
 	-- Contains (1) the cell coordinates and (2) the initial winding number increment
-	local cell_size = 10
+	local cell_size = 1
 
 	--DONE AND WORKING
-	local function computeGridDimension(scene)
-	    -- this should return a "optimal" width and height after
-	    -- We will need the viewport info about width and height
-	    -- added to render: scene.width, scene.height =  width, height
-
-	    -- Now we will make a fixed grid, with a size cell_size + extra_space
-	    -- All cells must have the same size, so..
-      -- The old calculation is equivalent to this:
+	local function computeGridDimension(scene) -- This can be improved to choose optimal dimensions
 	    return floor(scene.height/cell_size), floor(scene.width/cell_size)
 	end
 
 	--DONE AND WORKING
-	local function findCellCoord(x, y, grid) -- 0 and >n will mean out of the grid
+	local function findCellCoord(x, y, grid) -- 0 and >n or >m will mean out of the grid
     return floor(grid.n*y*(1/grid.height) + 1), floor(grid.m*x*(1/grid.width) + 1)
 	end
 
 	-----------------------------------------------------------------------------------
-  local function insideGrid(i,j,m,n) -- Will try to use this later
-    return  (i > 0 and j > 0 and i < n+1 and j < m+1)
-  end
+  -- local function insideGrid(i,j,m,n) -- Will try to use this later
+  --   return  (i > 0 and j > 0 and i < n+1 and j < m+1)
+  -- end
 
-  local function alocate_and_insert(grid,i,j,i_path,segment)
+  local function alocate_and_insert(grid,i,j,i_path,segment) -- We want to alocate space in the grid only when it is really necessary
     grid[i] = grid[i] or {}
     if grid[i][j] then
       if grid[i][j].order[#grid[i][j].order] ~= i_path then table.insert(grid[i][j].order, i_path) end
@@ -475,63 +480,60 @@ local implicit = {
     local event_list = {}
     local n, m = grid.n, grid.m
     local x, y = {}, {}
-    local xmax,xmin,ymax,ymin = 0,0,0,0
+    local xmax, xmin, ymax, ymin = 0, 0, 0, 0
     local i, j = 1, 1
+
     local goup = function()
       i = i+1
-      -- print("up")
       event_list[#event_list+1] = {1,i,j}
     end
     local godown = function()
       event_list[#event_list+1] = {-1,i,j}
-      -- print("down")
       i = i-1
     end
     local goright = function()
       j = j+1
-      -- print("right")
       if y[#y] < ymax then
         alocate_and_insert(grid,i,j-1,i_path,implicit[1](x[#x],y[#y],x[#x],ymax)) --insert line going up
       end
     end
     local goleft = function()
       j = j-1
-      -- print("left")
       if y[1] < ymax  then
         alocate_and_insert(grid,i,j,i_path,implicit[1](x[1],ymax,x[1],y[1])) --insert line going down
       end
     end
+
 	  for l, segment in ipairs(segments) do
 	    x, y = segment.x, segment.y
+      i, j = findCellCoord(x[1], y[1], grid)
 
-      local begi, begj = findCellCoord(x[1], y[1], grid)
-      local finali, finalj = findCellCoord(x[#x], y[#y], grid)
-      -- print(x[1],y[1],x[#x], y[#y],begi,begj,finali,finalj,n,m,grid.height,grid.width)
-      local segment_going_up = (finali >= begi)
-      local segment_going_right = (finalj >= begj)
-      i, j = begi, begj
+      local finali, finalj      = findCellCoord(x[#x], y[#y], grid)
+      local segment_going_up    = (finali >= i)
+      local segment_going_right = (finalj >= j)
 
-      local it, Nmax = 1, 100
+      local it, Nmax = 1, 500
       while it < Nmax  do
         it = it+1
-        alocate_and_insert(grid,i,j,i_path,segment)
-        if (i == finali and j == finalj) then--or cells[i][j].border then
-          -- if y[#y] == ymin then event_list[#event_list+1] = {-1,i,j} end
-          -- print("break")
+
+        alocate_and_insert(grid, i, j, i_path, segment)
+        if (i == finali and j == finalj) then
           break --leaves the while loop and goes to another segment
         end
-        xmin, xmax =  (j-1)*grid.cell_width, j*grid.cell_width
+
+        xmin, xmax = (j-1)*grid.cell_width , j*grid.cell_width
   	    ymin, ymax = (i-1)*grid.cell_height, i*grid.cell_height
         local w_up_left, w_up_right, w_down_left, w_down_right = 0, 0, 0, 0
+
         if segment_going_up then
           w_up_left  = winding[segment.type](segment,xmin,ymax)
           w_up_right = winding[segment.type](segment,xmax,ymax)
-          -- print(xmin,ymax,w_up_left,xmax,ymax,w_up_right)
-          if (x[1] == xmin and x[#x] == xmin and y[#y] >=--[[diff]] ymax) then
+
+          if (x[1] == xmin and x[#x] == xmin and y[#y] >= ymax) then
             goup()
           elseif (w_up_left ~= 0 and w_up_right == 0) or
-            (w_up_right ~= 0 and w_up_left == 0) or
-            (y[#y] == ymax --[[diff--]]and x[#x] >= xmin and x[#x] <= xmax) then
+                 (w_up_right ~= 0 and w_up_left == 0) or
+                 (y[#y] == ymax and x[#x] >= xmin and x[#x] <= xmax) then
             goup()
           elseif segment_going_right and x[#x]then
             goright()
@@ -544,16 +546,15 @@ local implicit = {
 
           if ymin == y[#y] and x[#x] >= xmin and x[#x] < xmax then
             event_list[#event_list+1] = {-1,i,j}
-            -- print("break2")
-             break
+            break
           end
           if (y[1] == ymin and y[#y] < ymin) then
             godown()
           elseif (x[1] == xmin and x[#x] == xmin and y[#y] < ymin) then
             godown()
           elseif (w_down_left ~= 0 and w_down_right == 0) or
-            (w_down_right ~= 0 and w_down_left == 0) then
-              godown()
+                 (w_down_right ~= 0 and w_down_left == 0) then
+            godown()
           elseif segment_going_right then
             goright()
           elseif x[#x] < xmin then                -- if go left
@@ -563,19 +564,11 @@ local implicit = {
           end
         end
 
-        if it == Nmax then
-          print(x[1],y[1],x[#x],y[#y])
-          print((begj-1)*grid.cell_width,(begi-1)*grid.cell_height,(begj)*grid.cell_width,(begi)*grid.cell_height)
-        end
       end
-
     end
     return event_list
-	        -- RETURN: VOID
 	end
 
-	--DONE AND WORKING
-	--needs a key as well so we order this array by this particular table position
 	local function CountingSort(array, key)
 		local count = {}
     local ind = {}
@@ -612,14 +605,14 @@ local implicit = {
         next_j = list[k][3]
       end
       if wN ~= 0 then
-        for l = next_j,j-1 do
+        for l=next_j,j-1 do
           alocate_and_add_winding(grid,i,l,i_path,wN)
         end
       end
-      if not same_line then
-        wN = list[k][1]
-      else
+      if same_line then
         wN = wN + list[k][1]
+      else
+        wN = list[k][1]
       end
       i, j = list[k][2], list[k][3]
     end
@@ -630,29 +623,20 @@ local implicit = {
     end
   end
 
-	--DONE AND WORKING
 	function prepare.grid(scene)
-	    -- 1) Compute grid dimensions
     scene.grid = {}
 	  scene.grid.n, scene.grid.m = computeGridDimension(scene) --n x m grid
     scene.grid.cell_width, scene.grid.cell_height = scene.width/scene.grid.m, scene.height/scene.grid.n
     scene.grid.width, scene.grid.height = scene.width, scene.height --This could've been passed directly
-	    -- 2) Create grid
-		-- local cells = makeGrid(scene.width, scene.height, n, m)
-	    -- 3) loop through paths inside scene
-		-- insert here yout respective sample loop
+
 		for i, e in ipairs(scene.elements) do
-      -- for i,e in ipairs(e.shape.segments) do print(e.type) end
 			local event_list = walkInPath(scene.grid, e.shape.segments, i)
-      -- for i,e in ipairs(event_list) do print(e[1],e[2],e[3]) end
       if #event_list > 0 then
         local y_order = CountingSort(event_list, 3) -- (sort by y line)
         local x_order = CountingSort(y_order, 2)
         running_sum(scene.grid,x_order,i)
       end
 		end
-
-	    -- 4) Sort event_list -> insertion_sort (or any other stable sort)
 	end
 
 -- prepare paths
@@ -828,8 +812,7 @@ local spread = {
 }
 
 local function interpolate(t1,t2,t,c1,c2)
-  local a, b, c = 1/(t2-t1), t2-t, t-t1
-  return {a*(b*c1[1]+c*c2[1]), a*(b*c1[2]+c*c2[2]), a*(b*c1[3]+c*c2[3]), a*(b*c1[4]+c*c2[4])}
+  return mult(1/(t2-t1),addM(mult(t2-t,c1),mult(t-t1,c2)))
 end
 
 local function ramp(r,t)
@@ -909,26 +892,10 @@ function prepare.radialgradient(paint)
 end
 
 function prepare.texture(paint)
-  local scene2tex = paint.xf
-  local data = paint.data
-  local img = data.image
-
-  paint.color = function(self, x, y)
-    x, y = scene2tex : apply(x, y, 1)
-
-    local wrapped_x = spread[data.spread](x)
-    local wrapped_y = spread[data.spread](y)
-
-    local tex_x = wrapped_x * img.width 
-    local tex_y = wrapped_y * img.height
-
-    -- Use nearest neighbour
-    local tex_x, tex_y = ceil(tex_x), ceil(tex_y)
-    local r, g, b, a = img : get(tex_x, tex_y)
-
-    a = a * paint.opacity
-
-    return {r, g, b, a}
+  local img = paint.data.image
+  local wrapping = function(x,y) return _M.vector(spread[paint.data.spread](x), spread[paint.data.spread](y)) end
+  paint.color = function (self,x,y)
+    return ramp_texture(img,wrapping(unpack(self.xf*_M.vector(x,y))))
   end
 end
 
@@ -946,24 +913,22 @@ local function preparescene(scene)
 end
 
 local gamma_factor = 2.2
+local n_samples = 16
+local sampling_pattern = blue[n_samples]
 
-local function gamma(color)
-    local out = {}
-    for k,v in ipairs(color) do
-        out[k] = v^gamma_factor
-    end
-    return out
+local function gamma(c)
+    local f = 1/gamma_factor
+    return {c[1]^f, c[2]^f, c[3]^f, c[4]^f}
 end
 
-local function ungamma(r, g, b, a)
-    local f = 1/gamma_factor
-    return {r^f, g^f, b^f, a^f}
+local function ungamma(c)
+    return {c[1]^gamma_factor,c[2]^gamma_factor,c[3]^gamma_factor,c[4]^gamma_factor}
 end
 
 local function sample_point(scene, x, y)
   local color = {1,1,1,1}
   local k,l = findCellCoord(x,y,scene.grid)
-  if scene.grid[k] == nil then return unpack(color,1,4) end
+  if scene.grid[k] == nil then return color end
   if scene.grid[k][l] then
     for ind,i in ipairs(scene.grid[k][l].order) do
       local cell = scene.grid[k][l][i]
@@ -978,28 +943,17 @@ local function sample_point(scene, x, y)
       end
     end
   end
-
-  return unpack(color,1,4)
+  return color
 end
 
 -- sample scene at x,y and return r,g,b,a
 local function sample(scene, x, y)
-  local sampling_pattern = blue[8]
   local sum = {0,0,0,0}
-
   for i = 1,#sampling_pattern,2 do
     local dx, dy = sampling_pattern[i], sampling_pattern[i+1]
-    local p = ungamma( sample_point(scene, x + dx, y + dy) )
-
-    for j = 1,4 do sum[j] = sum[j] + p[j] end
+    sum = addM(sum, ungamma(sample_point(scene, x + dx, y + dy)))
   end
-
-  local n_samples = #sampling_pattern / 2
-  for i = 1,4 do
-    sum[i] = sum[i] / n_samples
-  end
-
-  return unpack(sum)
+  return unpack(gamma(mult(1/n_samples,sum)))
 end
 
 -- verifies that there is nothing unsupported in the scene
